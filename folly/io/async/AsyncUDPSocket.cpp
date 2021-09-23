@@ -858,6 +858,15 @@ void AsyncUDPSocket::handlerReady(uint16_t events) noexcept {
   }
 }
 
+void AsyncUDPSocket::releaseZeroCopyBuf(uint32_t id) {
+  auto iter = idZeroCopyBufMap_.find(id);
+  CHECK(iter != idZeroCopyBufMap_.end());
+  if (ioBufFreeFunc_) {
+    ioBufFreeFunc_(std::move(iter->second));
+  }
+  idZeroCopyBufMap_.erase(iter);
+}
+
 bool AsyncUDPSocket::isZeroCopyMsg(FOLLY_MAYBE_UNUSED const cmsghdr& cmsg) {
 #ifdef FOLLY_HAVE_MSG_ERRQUEUE
   if ((cmsg.cmsg_level == SOL_IP && cmsg.cmsg_type == IP_RECVERR) ||
