@@ -218,19 +218,6 @@ class AsyncUDPSocket : public EventHandler {
    */
   virtual void setFD(NetworkSocket fd, FDOwnership ownership);
 
-  bool setZeroCopy(bool enable);
-  bool getZeroCopy() const { return zeroCopyEnabled_; }
-
-  uint32_t getZeroCopyBufId() const { return zeroCopyBufId_; }
-
-  size_t getZeroCopyReenableThreshold() const {
-    return zeroCopyReenableThreshold_;
-  }
-
-  void setZeroCopyReenableThreshold(size_t threshold) {
-    zeroCopyReenableThreshold_ = threshold;
-  }
-
   /**
    * Set extra control messages to send
    */
@@ -374,7 +361,7 @@ class AsyncUDPSocket : public EventHandler {
    * its own PMTU Discovery mechanism.
    * Note this doesn't work on Apple.
    */
-  virtual void dontFragment(bool df);
+  // virtual void dontFragment(bool df);
 
   /**
    * Set Dont-Fragment (DF) but ignore Path MTU.
@@ -395,26 +382,6 @@ class AsyncUDPSocket : public EventHandler {
 
   virtual bool isReading() const { return readCallback_ != nullptr; }
 
-  /**
-   * Set the maximum number of reads to execute from the underlying
-   * socket each time the EventBase detects that new ingress data is
-   * available. The default is kMaxReadsPerEvent
-   *
-   * @param maxReads  Maximum number of reads per data-available event;
-   *                  a value of zero means unlimited.
-   */
-  void setMaxReadsPerEvent(uint16_t maxReads) { maxReadsPerEvent_ = maxReads; }
-
-  /**
-   * Get the maximum number of reads this object will execute from
-   * the underlying socket each time the EventBase detects that new
-   * ingress data is available.
-   *
-   * @returns Maximum number of reads per data-available event; a value
-   *          of zero means unlimited.
-   */
-  uint16_t getMaxReadsPerEvent() const { return maxReadsPerEvent_; }
-
   virtual void detachEventBase();
 
   virtual void attachEventBase(folly::EventBase* evb);
@@ -424,10 +391,6 @@ class AsyncUDPSocket : public EventHandler {
   virtual int getGSO();
 
   bool setGSO(int val);
-
-  void setIOBufFreeFunc(IOBufFreeFunc&& ioBufFreeFunc) {
-    ioBufFreeFunc_ = std::move(ioBufFreeFunc);
-  }
 
   // generic receive offload get/set
   // negative return value means GRO is not available
@@ -444,38 +407,8 @@ class AsyncUDPSocket : public EventHandler {
   int getTimestamping();
   bool setTimestamping(int val);
 
-  // disable/enable RX zero checksum check for UDP over IPv6
-  bool setRxZeroChksum6(bool bVal);
-
-  // disable/enable TX zero checksum for UDP over IPv6
-  bool setTxZeroChksum6(bool bVal);
-
-  void setTrafficClass(int tclass);
-
   void applyOptions(
       const SocketOptionMap& options, SocketOptionKey::ApplyPos pos);
-
-  /**
-   * Override netops::Dispatcher to be used for netops:: calls.
-   *
-   * Pass empty shared_ptr to reset to default.
-   * Override can be used by unit tests to intercept and mock netops:: calls.
-   */
-  virtual void setOverrideNetOpsDispatcher(
-      std::shared_ptr<netops::Dispatcher> dispatcher) {
-    netops_.setOverride(std::move(dispatcher));
-  }
-
-  /**
-   * Returns override netops::Dispatcher being used for netops:: calls.
-   *
-   * Returns empty shared_ptr if no override set.
-   * Override can be used by unit tests to intercept and mock netops:: calls.
-   */
-  virtual std::shared_ptr<netops::Dispatcher> getOverrideNetOpsDispatcher()
-      const {
-    return netops_.getOverride();
-  }
 
  protected:
   struct full_sockaddr_storage {
@@ -550,7 +483,7 @@ class AsyncUDPSocket : public EventHandler {
   bool connected_{false};
 
   bool reuseAddr_{false};
-  bool reusePort_{false};
+  bool reusePort_{false}; 
   int rcvBuf_{0};
   int sndBuf_{0};
   int busyPollUs_{0};
