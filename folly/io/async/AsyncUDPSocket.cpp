@@ -372,6 +372,13 @@ int AsyncUDPSocket::getZeroCopyFlags() {
 
   return MSG_ZEROCOPY;
 }
+
+void AsyncUDPSocket::addZeroCopyBuf(std::unique_ptr<folly::IOBuf>&& buf) {
+  uint32_t id = getNextZeroCopyBufId();
+
+  idZeroCopyBufMap_[id] = std::move(buf);
+}
+
 ssize_t AsyncUDPSocket::writeChain(
     const folly::SocketAddress& address,
     std::unique_ptr<folly::IOBuf>&& buf,
@@ -849,6 +856,40 @@ void AsyncUDPSocket::handlerReady(uint16_t events) noexcept {
     DCHECK(readCallback_);
     handleRead();
   }
+}
+
+bool AsyncUDPSocket::isZeroCopyMsg(FOLLY_MAYBE_UNUSED const cmsghdr& cmsg) {
+#ifdef FOLLY_HAVE_MSG_ERRQUEUE
+  if ((cmsg.cmsg_level == SOL_IP && cmsg.cmsg_type == IP_RECVERR) ||
+      (cmsg.cmsg_level == SOL_IPV6 && cmsg.cmsg_type == IPV6_RECVERR)) {
+    auto serr =
+        reinterpret_cast<const struct sock_extended_err*>(CMSG_DATA(&cmsg));
+    return (
+        (serr->ee_errno == 0) && (serr->ee_origin == SO_EE_ORIGIN_ZEROCOPY));
+  }
+#endif
+  return false;
+}
+
+void AsyncUDPSocket::processZeroCopyMsg(
+    FOLLY_MAYBE_UNUSED const cmsghdr& cmsg) {
+#ifdef FOLLY_HAVE_MSG_ERRQUEUE
+  auto serr =
+      reinterpret_cast<const struct sock_extended_err*>(CMSG_DATA(&cmsg));
+  uint32_t hi = serr->ee_data;
+  uint32_t lo = serr->ee_info;
+  // disable zero copy if the buffer was actually copied
+  if ((serr->ee_code & SO_EE_CODE_ZEROCOPY_COPIED) && zeroCopyEnabled_) {
+    VLOG(2) << "AsyncSocket::processZeroCopyMsg(): setting "
+            << "zeroCopyEnabled_ = false due to SO_EE_CODE_ZEROCOPY_COPIED "
+            << "on " << fd_;
+    zeroCopyEnabled_ = false;
+  }
+
+  for (uint32_t i = lo; i <= hi; i++) {
+    releaseZeroCopyBuf(i);
+  }
+#endif
 }
 
 size_t AsyncUDPSocket::handleErrMessages() noexcept {
