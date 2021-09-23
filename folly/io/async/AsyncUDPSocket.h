@@ -483,7 +483,7 @@ class AsyncUDPSocket : public EventHandler {
   bool connected_{false};
 
   bool reuseAddr_{false};
-  bool reusePort_{false}; 
+  bool reusePort_{false};
   int rcvBuf_{0};
   int sndBuf_{0};
   int busyPollUs_{0};
