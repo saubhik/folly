@@ -1417,7 +1417,7 @@ TYPED_TEST_P(EventBaseTest, RunInThread) {
 //  triggering what otherwise would be race conditions, and trying to detect
 //  whether any of the race conditions happened.
 TYPED_TEST_P(EventBaseTest, RunInEventBaseThreadAndWait) {
-  const size_t c = 64;
+  const size_t c = 4;
   std::vector<std::unique_ptr<EventBase>> evbs;
   for (size_t i = 0; i < c; ++i) {
     auto evbPtr = getEventBase<TypeParam>();
