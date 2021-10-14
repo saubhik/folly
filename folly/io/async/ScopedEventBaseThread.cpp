@@ -16,8 +16,6 @@
 
 #include <folly/io/async/ScopedEventBaseThread.h>
 
-#include <thread>
-
 #include <folly/Function.h>
 #include <folly/Range.h>
 #include <folly/io/async/EventBaseManager.h>
@@ -65,14 +63,14 @@ ScopedEventBaseThread::ScopedEventBaseThread(
     StringPiece name)
     : ebm_(ebm ? ebm : EventBaseManager::get()) {
   new (&eb_) EventBase(std::move(eventBaseOptions));
-  th_ = thread(run, ebm_, &eb_, &stop_, name);
+  th_ = rt::Thread(std::bind(run, ebm_, &eb_, &stop_, name));
   eb_.waitUntilRunning();
 }
 
 ScopedEventBaseThread::~ScopedEventBaseThread() {
   eb_.terminateLoopSoon();
   stop_.post();
-  th_.join();
+  th_.Join();
 }
 
 } // namespace folly

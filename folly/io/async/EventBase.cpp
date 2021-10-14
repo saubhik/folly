@@ -24,7 +24,6 @@
 
 #include <memory>
 #include <mutex>
-#include <thread>
 
 #include <folly/ExceptionString.h>
 #include <folly/Memory.h>
@@ -261,13 +260,13 @@ void EventBase::setMaxReadAtOnce(uint32_t maxAtOnce) {
 
 void EventBase::checkIsInEventBaseThread() const {
   auto evbTid = loopThread_.load(std::memory_order_relaxed);
-  if (evbTid == std::thread::id()) {
+  if (evbTid == rt::Thread::Id()) {
     return;
   }
 
   // Using getThreadName(evbTid) instead of name_ will work also if
   // the thread name is set outside of EventBase (and name_ is empty).
-  auto curTid = std::this_thread::get_id();
+  auto curTid = rt::GetId();
   CHECK_EQ(evbTid, curTid)
       << "This logic must be executed in the event base thread. "
       << "Event base thread name: \""
@@ -304,8 +303,8 @@ static std::chrono::milliseconds getTimeDelta(
 }
 
 void EventBase::waitUntilRunning() {
-  while (loopThread_.load(std::memory_order_acquire) == std::thread::id()) {
-    std::this_thread::yield();
+  while (loopThread_.load(std::memory_order_acquire) == rt::Thread::Id()) {
+    rt::Yield();
   }
 }
 
@@ -358,9 +357,9 @@ bool EventBase::loopBody(int flags, bool ignoreKeepAlive) {
   std::chrono::microseconds idle;
 
   auto const prevLoopThread = loopThread_.exchange(
-      std::this_thread::get_id(), std::memory_order_release);
-  CHECK_EQ(std::thread::id(), prevLoopThread)
-      << "Driving an EventBase in one thread (" << std::this_thread::get_id()
+      rt::GetId(), std::memory_order_release);
+  CHECK_EQ(rt::Thread::Id(), prevLoopThread)
+      << "Driving an EventBase in one thread (" << rt::GetId()
       << ") while it is already being driven in another thread ("
       << prevLoopThread << ") is forbidden.";
 

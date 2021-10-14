@@ -16,6 +16,8 @@
 
 #include <glog/logging.h>
 
+#include "runtime.h"
+
 #include <folly/Portability.h>
 #include <folly/init/Init.h>
 #include <folly/portability/GFlags.h>
@@ -35,5 +37,8 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   folly::Init init(&argc, &argv);
 
-  return RUN_ALL_TESTS();
+  rt::RuntimeInit("/proj/quic-server-PG0/users/saubhik/caladan/server.config",
+    RUN_ALL_TESTS);
+
+  return 0;
 }

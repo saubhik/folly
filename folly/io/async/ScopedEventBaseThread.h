@@ -17,7 +17,8 @@
 #pragma once
 
 #include <memory>
-#include <thread>
+
+#include "thread.h"
 
 #include <folly/io/async/EventBase.h>
 #include <folly/synchronization/Baton.h>
@@ -52,7 +53,7 @@ class ScopedEventBaseThread : public IOExecutor, public SequencedExecutor {
 
   EventBase* getEventBase() override { return &eb_; }
 
-  std::thread::id getThreadId() const { return th_.get_id(); }
+  rt::Thread::Id getThreadId() const { return th_.GetId(); }
 
   void add(Func func) override { getEventBase()->add(std::move(func)); }
 
@@ -76,7 +77,7 @@ class ScopedEventBaseThread : public IOExecutor, public SequencedExecutor {
   union {
     mutable EventBase eb_;
   };
-  std::thread th_;
+  rt::Thread th_;
   folly::Baton<> stop_;
 };
 

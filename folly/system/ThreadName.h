@@ -17,7 +17,8 @@
 #pragma once
 
 #include <string>
-#include <thread>
+
+#include "thread.h"
 
 #include <folly/Optional.h>
 #include <folly/Range.h>
@@ -42,7 +43,7 @@ bool canSetOtherThreadName();
  * Get the name of the given thread, or nothing if an error occurs
  * or the functionality is not available.
  */
-Optional<std::string> getThreadName(std::thread::id tid);
+Optional<std::string> getThreadName(rt::Thread::Id tid);
 
 /**
  * Equivalent to getThreadName(std::this_thread::get_id());
@@ -54,7 +55,7 @@ Optional<std::string> getCurrentThreadName();
  * Returns false on failure, if an error occurs or the functionality
  * is not available.
  */
-bool setThreadName(std::thread::id tid, StringPiece name);
+bool setThreadName(rt::Thread::Id tid, StringPiece name);
 bool setThreadName(pthread_t pid, StringPiece name);
 
 /**
