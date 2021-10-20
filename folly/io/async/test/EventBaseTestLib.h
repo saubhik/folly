@@ -1417,7 +1417,7 @@ TYPED_TEST_P(EventBaseTest, RunInThread) {
 //  triggering what otherwise would be race conditions, and trying to detect
 //  whether any of the race conditions happened.
 TYPED_TEST_P(EventBaseTest, RunInEventBaseThreadAndWait) {
-  const size_t c = 4;
+  const size_t c = 2;
   std::vector<std::unique_ptr<EventBase>> evbs;
   for (size_t i = 0; i < c; ++i) {
     auto evbPtr = getEventBase<TypeParam>();
@@ -1433,10 +1433,12 @@ TYPED_TEST_P(EventBaseTest, RunInEventBaseThreadAndWait) {
   std::vector<rt::Thread> threads;
   for (size_t i = 0; i < c; ++i) {
     threads.emplace_back([&atoms, i, &evbs] {
+      VLOG(11) << "thread " << i << " started!";
       folly::EventBase& eb = *evbs.at(i);
       auto& atom = *atoms.at(i);
-      auto ebth = rt::Thread([&] { eb.loopForever(); });
+      auto ebth = rt::Thread([&] { VLOG(11) << "I am on!"; eb.loopForever(); });
       eb.waitUntilRunning();
+      VLOG(11) << "thread " << i << "'s event loop started running!";
       eb.runInEventBaseThreadAndWait([&] {
         size_t x = 0;
         atom.compare_exchange_weak(
@@ -1447,6 +1449,7 @@ TYPED_TEST_P(EventBaseTest, RunInEventBaseThreadAndWait) {
           x, 2, std::memory_order_release, std::memory_order_relaxed);
       eb.terminateLoopSoon();
       ebth.Join();
+      VLOG(11) << "thread " << i << " done!";
     });
   }
   for (size_t i = 0; i < c; ++i) {
@@ -1464,7 +1467,7 @@ TYPED_TEST_P(EventBaseTest, RunImmediatelyOrRunInEventBaseThreadAndWaitCross) {
   auto evbPtr = getEventBase<TypeParam>();
   SKIP_IF(!evbPtr) << "Backend not available";
   folly::EventBase& eb = *evbPtr;
-  rt::Thread th(std::bind(&EventBase::loopForever, &eb));
+  rt::Thread th([&eb] { eb.loopForever(); });
   SCOPE_EXIT {
     eb.terminateLoopSoon();
     th.Join();

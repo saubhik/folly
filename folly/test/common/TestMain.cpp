@@ -37,8 +37,8 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   folly::Init init(&argc, &argv);
 
-  rt::RuntimeInit("/proj/quic-server-PG0/users/saubhik/caladan/server.config",
-    RUN_ALL_TESTS);
+  rt::RuntimeInit("/proj/quic-server-PG0/users/saubhik/caladan/test.config",
+                  RUN_ALL_TESTS);
 
   return 0;
 }

@@ -22,8 +22,10 @@
 
 #include <fcntl.h>
 
+#include <iostream>
 #include <memory>
-#include <mutex>
+
+#include "sync.h"
 
 #include <folly/ExceptionString.h>
 #include <folly/Memory.h>
@@ -65,12 +67,12 @@ class EventBaseBackend : public folly::EventBaseBackendBase {
 // event_init() should only ever be called once.  Subsequent calls
 // should be made to event_base_new().  We can recognise that
 // event_init() has already been called by simply inspecting current_base.
-std::mutex libevent_mutex_;
+rt::Mutex libevent_mutex_;
 
 EventBaseBackend::EventBaseBackend() {
   struct event ev;
   {
-    std::lock_guard<std::mutex> lock(libevent_mutex_);
+    libevent_mutex_.Lock();
 
     // The value 'current_base' (libevent 1) or
     // 'event_global_current_base_' (libevent 2) is filled in by event_set(),
@@ -81,6 +83,8 @@ EventBaseBackend::EventBaseBackend() {
     if (!ev.ev_base) {
       evb_ = event_init();
     }
+
+    libevent_mutex_.Unlock();
   }
 
   if (ev.ev_base) {
@@ -123,8 +127,9 @@ bool EventBaseBackend::eb_event_active(Event& event, int res) {
 }
 
 EventBaseBackend::~EventBaseBackend() {
-  std::lock_guard<std::mutex> lock(libevent_mutex_);
+  libevent_mutex_.Lock();
   event_base_free(evb_);
+  libevent_mutex_.Unlock();
 }
 
 class ExecutionObserverScopeGuard {
@@ -197,21 +202,12 @@ EventBase::EventBase(Options options)
 }
 
 EventBase::~EventBase() {
-  std::future<void> virtualEventBaseDestroyFuture;
-  if (virtualEventBase_) {
-    virtualEventBaseDestroyFuture = virtualEventBase_->destroy();
-  }
-
   // Keep looping until all keep-alive handles are released. Each keep-alive
   // handle signals that some external code will still schedule some work on
   // this EventBase (so it's not safe to destroy it).
   while (loopKeepAliveCount() > 0) {
     applyLoopKeepAlive();
     loopOnce();
-  }
-
-  if (virtualEventBaseDestroyFuture.valid()) {
-    virtualEventBaseDestroyFuture.get();
   }
 
   // Call all destruction callbacks, before we start cleaning up our state.
@@ -304,6 +300,7 @@ static std::chrono::milliseconds getTimeDelta(
 
 void EventBase::waitUntilRunning() {
   while (loopThread_.load(std::memory_order_acquire) == rt::Thread::Id()) {
+    VLOG(11) << rt::GetId() << " is yielding!";
     rt::Yield();
   }
 }
@@ -565,6 +562,7 @@ void EventBase::terminateLoopSoon() {
     queue_->putMessage([&] { evb_->eb_event_base_loopbreak(); });
   } catch (...) {
     // putMessage() can only fail when the queue is draining in ~EventBase.
+    VLOG(11) << "queue_->putMessage failed during terminateLoopSoon()!";
   }
 }
 
@@ -840,9 +838,6 @@ VirtualEventBase& EventBase::getVirtualEventBase() {
 }
 
 VirtualEventBase* EventBase::tryGetVirtualEventBase() {
-  if (folly::test_once(virtualEventBaseInitFlag_)) {
-    return virtualEventBase_.get();
-  }
   return nullptr;
 }
 
