@@ -288,41 +288,6 @@ void AsyncUDPSocket::connect(const folly::SocketAddress& address) {
   }
 }
 
-void AsyncUDPSocket::dontFragment(bool df) {
-  int optname4 = 0;
-  int optval4 = df ? 0 : 0;
-  int optname6 = 0;
-  int optval6 = df ? 0 : 0;
-#if defined(IP_MTU_DISCOVER) && defined(IP_PMTUDISC_DO) && \
-    defined(IP_PMTUDISC_WANT)
-  optname4 = IP_MTU_DISCOVER;
-  optval4 = df ? IP_PMTUDISC_DO : IP_PMTUDISC_WANT;
-#endif
-#if defined(IPV6_MTU_DISCOVER) && defined(IPV6_PMTUDISC_DO) && \
-    defined(IPV6_PMTUDISC_WANT)
-  optname6 = IPV6_MTU_DISCOVER;
-  optval6 = df ? IPV6_PMTUDISC_DO : IPV6_PMTUDISC_WANT;
-#endif
-  if (optname4 && optval4 && address().getFamily() == AF_INET) {
-    if (netops::setsockopt(
-            fd_, IPPROTO_IP, optname4, &optval4, sizeof(optval4))) {
-      throw AsyncSocketException(
-          AsyncSocketException::NOT_OPEN,
-          "Failed to set DF with IP_MTU_DISCOVER",
-          errno);
-    }
-  }
-  if (optname6 && optval6 && address().getFamily() == AF_INET6) {
-    if (netops::setsockopt(
-            fd_, IPPROTO_IPV6, optname6, &optval6, sizeof(optval6))) {
-      throw AsyncSocketException(
-          AsyncSocketException::NOT_OPEN,
-          "Failed to set DF with IPV6_MTU_DISCOVER",
-          errno);
-    }
-  }
-}
-
 void AsyncUDPSocket::setDFAndTurnOffPMTU() {
   int optname4 = 0;
   int optval4 = 0;
@@ -388,48 +353,6 @@ void AsyncUDPSocket::setFD(NetworkSocket fd, FDOwnership ownership) {
 
   EventHandler::changeHandlerFD(fd_);
   localAddress_.setFromLocalAddress(fd_);
-}
-
-bool AsyncUDPSocket::setZeroCopy(bool enable) {
-  if (msgErrQueueSupported) {
-    zeroCopyVal_ = enable;
-
-    if (fd_ == NetworkSocket()) {
-      return false;
-    }
-
-    int val = enable ? 1 : 0;
-    int ret =
-        netops::setsockopt(fd_, SOL_SOCKET, SO_ZEROCOPY, &val, sizeof(val));
-
-    // if enable == false, set zeroCopyEnabled_ = false regardless
-    // if SO_ZEROCOPY is set or not
-    if (!enable) {
-      zeroCopyEnabled_ = enable;
-      return true;
-    }
-
-    /* if the setsockopt failed, try to see if the socket inherited the flag
-     * since we cannot set SO_ZEROCOPY on a socket s = accept
-     */
-    if (ret) {
-      val = 0;
-      socklen_t optlen = sizeof(val);
-      ret = netops::getsockopt(fd_, SOL_SOCKET, SO_ZEROCOPY, &val, &optlen);
-
-      if (!ret) {
-        enable = val != 0;
-      }
-    }
-
-    if (!ret) {
-      zeroCopyEnabled_ = enable;
-
-      return true;
-    }
-  }
-
-  return false;
 }
 
 ssize_t AsyncUDPSocket::writeGSO(
@@ -1285,79 +1208,6 @@ int AsyncUDPSocket::getGRO() {
   }
 
   return gro_.value();
-}
-
-AsyncUDPSocket::TXTime AsyncUDPSocket::getTXTime() {
-  // check if we can return the cached value
-  if (FOLLY_UNLIKELY(!txTime_.has_value())) {
-    TXTime txTime;
-#ifdef FOLLY_HAVE_MSG_ERRQUEUE
-    folly::netops::sock_txtime val = {};
-    socklen_t optlen = sizeof(val);
-    if (!netops::getsockopt(fd_, SOL_SOCKET, SO_TXTIME, &val, &optlen)) {
-      txTime.clockid = val.clockid;
-      txTime.deadline = (val.flags & folly::netops::SOF_TXTIME_DEADLINE_MODE);
-    }
-#endif
-    txTime_ = txTime;
-  }
-
-  return txTime_.value();
-}
-
-bool AsyncUDPSocket::setTXTime(TXTime txTime) {
-#ifdef FOLLY_HAVE_MSG_ERRQUEUE
-  folly::netops::sock_txtime val;
-  val.clockid = txTime.clockid;
-  val.flags = txTime.deadline ? folly::netops::SOF_TXTIME_DEADLINE_MODE : 0;
-  int ret =
-      netops::setsockopt(fd_, SOL_SOCKET, SO_TIMESTAMPING, &val, sizeof(val));
-
-  txTime_ = ret ? TXTime() : txTime;
-
-  return !ret;
-#else
-  (void)txTime;
-  return false;
-#endif
-}
-
-bool AsyncUDPSocket::setRxZeroChksum6(FOLLY_MAYBE_UNUSED bool bVal) {
-#ifdef FOLLY_HAVE_MSG_ERRQUEUE
-  if (address().getFamily() != AF_INET6) {
-    return false;
-  }
-
-  int val = bVal ? 1 : 0;
-  int ret =
-      netops::setsockopt(fd_, SOL_UDP, UDP_NO_CHECK6_RX, &val, sizeof(val));
-  return !ret;
-#else
-  return false;
-#endif
-}
-
-bool AsyncUDPSocket::setTxZeroChksum6(FOLLY_MAYBE_UNUSED bool bVal) {
-#ifdef FOLLY_HAVE_MSG_ERRQUEUE
-  if (address().getFamily() != AF_INET6) {
-    return false;
-  }
-
-  int val = bVal ? 1 : 0;
-  int ret =
-      netops::setsockopt(fd_, SOL_UDP, UDP_NO_CHECK6_TX, &val, sizeof(val));
-  return !ret;
-#else
-  return false;
-#endif
-}
-
-void AsyncUDPSocket::setTrafficClass(int tclass) {
-  if (netops::setsockopt(
-          fd_, IPPROTO_IPV6, IPV6_TCLASS, &tclass, sizeof(int)) != 0) {
-    throw AsyncSocketException(
-        AsyncSocketException::NOT_OPEN, "Failed to set IPV6_TCLASS", errno);
-  }
 }
 
 void AsyncUDPSocket::applyOptions(
