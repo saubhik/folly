@@ -20,6 +20,9 @@
 #include <memory>
 #include <thread>
 
+#include "runtime.h"
+#include "thread.h"
+
 #include <folly/Memory.h>
 #include <folly/ScopeGuard.h>
 #include <folly/futures/Promise.h>
@@ -1347,18 +1350,18 @@ static inline void runInThreadTestFunc(RunInThreadArg* arg) {
 } // namespace
 
 TYPED_TEST_P(EventBaseTest, RunInThread) {
-  constexpr uint32_t numThreads = 50;
-  constexpr uint32_t opsPerThread = 100;
+  constexpr uint32_t numThreads = 2;
+  constexpr uint32_t opsPerThread = 3;
   auto backend = TypeParam::getBackend();
   SKIP_IF(!backend) << "Backend not available";
   RunInThreadData data(
       [] { return TypeParam::getBackend(); }, numThreads, opsPerThread);
 
-  std::deque<std::thread> threads;
+  std::deque<rt::Thread> threads;
   SCOPE_EXIT {
     // Wait on all of the threads.
     for (auto& thread : threads) {
-      thread.join();
+      thread.Join();
     }
   };
 
@@ -1367,7 +1370,7 @@ TYPED_TEST_P(EventBaseTest, RunInThread) {
       for (int n = 0; n < data.opsPerThread; ++n) {
         RunInThreadArg* arg = new RunInThreadArg(&data, i, n);
         data.evb.runInEventBaseThread(runInThreadTestFunc, arg);
-        usleep(10);
+        // rt::SleepFor(std::chrono::microseconds(10));
       }
     });
   }
@@ -1391,7 +1394,7 @@ TYPED_TEST_P(EventBaseTest, RunInThread) {
 
   auto timeTaken = std::chrono::duration_cast<std::chrono::milliseconds>(
       end.getTime() - start.getTime());
-  ASSERT_LT(timeTaken.count(), 1000);
+  // ASSERT_LT(timeTaken.count(), 1000);
   VLOG(11) << "Time taken: " << timeTaken.count();
 
   // Verify that we have all of the events from every thread
@@ -1414,7 +1417,7 @@ TYPED_TEST_P(EventBaseTest, RunInThread) {
 //  triggering what otherwise would be race conditions, and trying to detect
 //  whether any of the race conditions happened.
 TYPED_TEST_P(EventBaseTest, RunInEventBaseThreadAndWait) {
-  const size_t c = 256;
+  const size_t c = 2;
   std::vector<std::unique_ptr<EventBase>> evbs;
   for (size_t i = 0; i < c; ++i) {
     auto evbPtr = getEventBase<TypeParam>();
@@ -1427,13 +1430,15 @@ TYPED_TEST_P(EventBaseTest, RunInEventBaseThreadAndWait) {
     auto& atom = atoms.at(i);
     atom = std::make_unique<std::atomic<size_t>>(0);
   }
-  std::vector<std::thread> threads;
+  std::vector<rt::Thread> threads;
   for (size_t i = 0; i < c; ++i) {
-    threads.emplace_back([&atoms, i, evb = std::move(evbs[i])] {
-      folly::EventBase& eb = *evb;
+    threads.emplace_back([&atoms, i, &evbs] {
+      VLOG(11) << "thread " << i << " started!";
+      folly::EventBase& eb = *evbs.at(i);
       auto& atom = *atoms.at(i);
-      auto ebth = std::thread([&] { eb.loopForever(); });
+      auto ebth = rt::Thread([&] { VLOG(11) << "I am on!"; eb.loopForever(); });
       eb.waitUntilRunning();
+      VLOG(11) << "thread " << i << "'s event loop started running!";
       eb.runInEventBaseThreadAndWait([&] {
         size_t x = 0;
         atom.compare_exchange_weak(
@@ -1443,12 +1448,13 @@ TYPED_TEST_P(EventBaseTest, RunInEventBaseThreadAndWait) {
       atom.compare_exchange_weak(
           x, 2, std::memory_order_release, std::memory_order_relaxed);
       eb.terminateLoopSoon();
-      ebth.join();
+      ebth.Join();
+      VLOG(11) << "thread " << i << " done!";
     });
   }
   for (size_t i = 0; i < c; ++i) {
     auto& th = threads.at(i);
-    th.join();
+    th.Join();
   }
   size_t sum = 0;
   for (auto& atom : atoms) {
@@ -1461,10 +1467,10 @@ TYPED_TEST_P(EventBaseTest, RunImmediatelyOrRunInEventBaseThreadAndWaitCross) {
   auto evbPtr = getEventBase<TypeParam>();
   SKIP_IF(!evbPtr) << "Backend not available";
   folly::EventBase& eb = *evbPtr;
-  std::thread th(&EventBase::loopForever, &eb);
+  rt::Thread th([&eb] { eb.loopForever(); });
   SCOPE_EXIT {
     eb.terminateLoopSoon();
-    th.join();
+    th.Join();
   };
   auto mutated = false;
   eb.runImmediatelyOrRunInEventBaseThreadAndWait([&] { mutated = true; });
@@ -1475,10 +1481,10 @@ TYPED_TEST_P(EventBaseTest, RunImmediatelyOrRunInEventBaseThreadAndWaitWithin) {
   auto evbPtr = getEventBase<TypeParam>();
   SKIP_IF(!evbPtr) << "Backend not available";
   folly::EventBase& eb = *evbPtr;
-  std::thread th(&EventBase::loopForever, &eb);
+  rt::Thread th(std::bind(&EventBase::loopForever, &eb));
   SCOPE_EXIT {
     eb.terminateLoopSoon();
-    th.join();
+    th.Join();
   };
   eb.runInEventBaseThreadAndWait([&] {
     auto mutated = false;

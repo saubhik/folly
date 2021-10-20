@@ -33,6 +33,8 @@
 #include <boost/intrusive/list.hpp>
 #include <glog/logging.h>
 
+#include "thread.h"
+
 #include <folly/Executor.h>
 #include <folly/Function.h>
 #include <folly/Memory.h>
@@ -669,7 +671,7 @@ class EventBase : public TimeoutManager,
    * make any decisions; for that, consider waitUntilRunning().
    */
   bool isRunning() const {
-    return loopThread_.load(std::memory_order_relaxed) != std::thread::id();
+    return loopThread_.load(std::memory_order_relaxed) != rt::Thread::Id();
   }
 
   /**
@@ -687,12 +689,12 @@ class EventBase : public TimeoutManager,
    */
   bool isInEventBaseThread() const {
     auto tid = loopThread_.load(std::memory_order_relaxed);
-    return tid == std::thread::id() || tid == std::this_thread::get_id();
+    return tid == rt::Thread::Id() || tid == rt::GetId();
   }
 
   bool inRunningEventBaseThread() const {
     return loopThread_.load(std::memory_order_relaxed) ==
-        std::this_thread::get_id();
+        rt::GetId();
   }
 
   /**
@@ -902,7 +904,7 @@ class EventBase : public TimeoutManager,
 
   // The ID of the thread running the main loop.
   // std::thread::id{} if loop is not running.
-  std::atomic<std::thread::id> loopThread_;
+  std::atomic<rt::Thread::Id> loopThread_;
 
   // A notification queue for runInEventBaseThread() to use
   // to send function requests to the EventBase thread.

@@ -72,7 +72,8 @@ REGISTER_TYPED_TEST_CASE_P(
     LoopKeepAliveWithLoopForever,
     LoopKeepAliveShutdown,
     LoopKeepAliveAtomic,
-    LoopKeepAliveCast);
+    LoopKeepAliveCast
+);
 
 REGISTER_TYPED_TEST_CASE_P(
     EventBaseTest1,
@@ -87,7 +88,8 @@ REGISTER_TYPED_TEST_CASE_P(
     RunOnDestructionAddCallbackWithinCallback,
     InternalExternalCallbackOrderTest,
     pidCheck,
-    EventBaseExecutionObserver);
+    EventBaseExecutionObserver
+);
 
 struct DefaultBackendProvider {
   static std::unique_ptr<folly::EventBaseBackendBase> getBackend() {
