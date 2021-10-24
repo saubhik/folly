@@ -26,6 +26,7 @@
 #include <memory>
 
 #include "sync.h"
+#include "net.h"
 
 #include <folly/ExceptionString.h>
 #include <folly/Memory.h>
@@ -39,6 +40,25 @@
 
 namespace {
 constexpr folly::StringPiece executorName = "EventBase";
+
+class ShenangoEventBaseBackend : public folly::EventBaseBackendBase {
+ public:
+  ShenangoEventBaseBackend();
+  explicit ShenangoEventBaseBackend(rt::EventLoop* sevb);
+
+  rt::EventLoop* getShenangoEventBase() override { return sevb_; }
+
+  int eb_event_base_loop(int flags) override;
+  int eb_event_base_loopbreak() override;
+
+  int eb_event_add(Event& event, const struct timeval* timeout) override;
+  int eb_event_del(EventBaseBackendBase::Event& event) override;
+
+  bool eb_event_active(Event& event, int res) override;
+
+ private:
+  rt::EventLoop* sevb_;
+};
 
 class EventBaseBackend : public folly::EventBaseBackendBase {
  public:
@@ -97,6 +117,15 @@ EventBaseBackend::EventBaseBackend() {
   }
 }
 
+ShenangoEventBaseBackend::ShenangoEventBaseBackend() {
+  sevb_ = rt::EventLoop::CreateWaiter();
+
+  if (UNLIKELY(sevb_ == nullptr)) {
+    LOG(ERROR) << "EventBase(): Failed to init shenango event base.";
+    folly::throwSystemError("error in ShenangoEventBaseBackend::ShenangoEventBaseBackend()");
+  }
+}
+
 EventBaseBackend::EventBaseBackend(event_base* evb) : evb_(evb) {
   if (UNLIKELY(evb_ == nullptr)) {
     LOG(ERROR) << "EventBase(): Pass nullptr as event base.";
@@ -104,12 +133,30 @@ EventBaseBackend::EventBaseBackend(event_base* evb) : evb_(evb) {
   }
 }
 
+ShenangoEventBaseBackend::ShenangoEventBaseBackend(rt::EventLoop* sevb) : sevb_(sevb) {
+  if (UNLIKELY(sevb_ == nullptr)) {
+    LOG(ERROR) << "EventBase(): Pass nullptr as shenango event base.";
+    throw std::invalid_argument("EventBase(): shenango event base cannot be nullptr");
+  }
+}
+
 int EventBaseBackend::eb_event_base_loop(int flags) {
   return event_base_loop(evb_, flags);
 }
 
+int ShenangoEventBaseBackend::eb_event_base_loop(int flags) {
+  assert(flags & EVLOOP_ONCE);
+  sevb_->LoopCbOnce();
+  VLOG(11) << "ShenangoEventBaseBackend: Executed sevb_->LoopCbOnce()";
+  return 1;
+}
+
 int EventBaseBackend::eb_event_base_loopbreak() {
   return event_base_loopbreak(evb_);
+}
+
+int ShenangoEventBaseBackend::eb_event_base_loopbreak() {
+  throw std::logic_error("not implemented!");
 }
 
 int EventBaseBackend::eb_event_add(
@@ -117,13 +164,26 @@ int EventBaseBackend::eb_event_add(
   return event_add(event.getEvent(), timeout);
 }
 
+int ShenangoEventBaseBackend::eb_event_add(
+    Event& event, const struct timeval* timeout) {
+  throw std::logic_error("not implemented!");
+}
+
 int EventBaseBackend::eb_event_del(EventBaseBackendBase::Event& event) {
   return event_del(event.getEvent());
+}
+
+int ShenangoEventBaseBackend::eb_event_del(EventBaseBackendBase::Event& event) {
+  throw std::logic_error("not implemented!");
 }
 
 bool EventBaseBackend::eb_event_active(Event& event, int res) {
   event_active(event.getEvent(), res, 1);
   return true;
+}
+
+bool ShenangoEventBaseBackend::eb_event_active(Event& event, int res) {
+  throw std::logic_error("not implemented!");
 }
 
 EventBaseBackend::~EventBaseBackend() {
@@ -198,6 +258,7 @@ EventBase::EventBase(Options options)
       executionObserver_(nullptr) {
   evb_ =
       options.backendFactory ? options.backendFactory() : getDefaultBackend();
+  sevb_ = std::make_unique<ShenangoEventBaseBackend>();
   initNotificationQueue();
 }
 
@@ -343,6 +404,7 @@ bool EventBase::loopBody(int flags, bool ignoreKeepAlive) {
   SCOPE_EXIT { invokingLoop_ = false; };
 
   int res = 0;
+  int sres = 0; // TODO: do something with sres
   bool ranLoopCallbacks;
   bool blocking = !(flags & EVLOOP_NONBLOCK);
   bool once = (flags & EVLOOP_ONCE);
@@ -385,8 +447,10 @@ bool EventBase::loopBody(int flags, bool ignoreKeepAlive) {
     // we don't have to handle anything to start with...
     if (blocking && loopCallbacks_.empty()) {
       res = evb_->eb_event_base_loop(EVLOOP_ONCE);
+      sres = sevb_->eb_event_base_loop(EVLOOP_ONCE);
     } else {
       res = evb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
+      sres = sevb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
     }
 
     ranLoopCallbacks = runLoopCallbacks();

@@ -964,6 +964,7 @@ class EventBase : public TimeoutManager,
 
   // pointer to underlying backend class doing the heavy lifting
   std::unique_ptr<EventBaseBackendBase> evb_;
+  std::unique_ptr<EventBaseBackendBase> sevb_; // for shenango event loop
 };
 
 template <typename T>
