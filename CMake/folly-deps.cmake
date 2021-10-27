@@ -156,7 +156,7 @@ list(APPEND FOLLY_LINK_LIBRARIES /proj/quic-server-PG0/users/saubhik/caladan/lib
 list(APPEND FOLLY_LINK_LIBRARIES /proj/quic-server-PG0/users/saubhik/caladan/libbase.a)
 
 # need to set the linker script
-set(CMAKE_EXE_LINKER_FLAGS "-T /proj/quic-server-PG0/users/saubhik/caladan/base/base.ld")
+set(CMAKE_EXE_LINKER_FLAGS -T /proj/quic-server-PG0/users/saubhik/caladan/base/base.ld)
 
 # message(STATUS "FOLLY_LINK_LIBRARIES: ${FOLLY_LINK_LIBRARIES}")
 # message(STATUS "FOLLY_INCLUDE_DIRECTORIES: ${FOLLY_INCLUDE_DIRECTORIES}")

@@ -182,8 +182,7 @@ class EventBaseBackendBase {
   EventBaseBackendBase(const EventBaseBackendBase&) = delete;
   EventBaseBackendBase& operator=(const EventBaseBackendBase&) = delete;
 
-  virtual event_base* getEventBase() { return nullptr; };
-  virtual rt::EventLoop* getShenangoEventBase() { return nullptr; };
+  virtual event_base* getEventBase() = 0;
   virtual int eb_event_base_loop(int flags) = 0;
   virtual int eb_event_base_loopbreak() = 0;
 

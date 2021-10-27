@@ -26,13 +26,13 @@
 #include <memory>
 
 #include "sync.h"
-#include "net.h"
 
 #include <folly/ExceptionString.h>
 #include <folly/Memory.h>
 #include <folly/String.h>
 #include <folly/io/async/EventBaseAtomicNotificationQueue.h>
 #include <folly/io/async/EventBaseBackendBase.h>
+#include <folly/io/async/ShenangoEventBaseBackendBase.h>
 #include <folly/io/async/VirtualEventBase.h>
 #include <folly/portability/Unistd.h>
 #include <folly/synchronization/Baton.h>
@@ -41,20 +41,15 @@
 namespace {
 constexpr folly::StringPiece executorName = "EventBase";
 
-class ShenangoEventBaseBackend : public folly::EventBaseBackendBase {
+class ShenangoEventBaseBackend : public folly::ShenangoEventBaseBackendBase {
  public:
   ShenangoEventBaseBackend();
   explicit ShenangoEventBaseBackend(rt::EventLoop* sevb);
 
-  rt::EventLoop* getShenangoEventBase() override { return sevb_; }
-
-  int eb_event_base_loop(int flags) override;
-  int eb_event_base_loopbreak() override;
-
-  int eb_event_add(Event& event, const struct timeval* timeout) override;
-  int eb_event_del(EventBaseBackendBase::Event& event) override;
-
-  bool eb_event_active(Event& event, int res) override;
+  rt::EventLoop* getEventBase() override { return sevb_; }
+  void eb_event_base_loop(int flags) override;
+  void eb_event_add(Event& event, const struct timeval* timeout) override;
+  void eb_event_del(Event& event) override;
 
  private:
   rt::EventLoop* sevb_;
@@ -144,19 +139,14 @@ int EventBaseBackend::eb_event_base_loop(int flags) {
   return event_base_loop(evb_, flags);
 }
 
-int ShenangoEventBaseBackend::eb_event_base_loop(int flags) {
+void ShenangoEventBaseBackend::eb_event_base_loop(int flags) {
   assert(flags & EVLOOP_ONCE);
   sevb_->LoopCbOnce();
   VLOG(11) << "ShenangoEventBaseBackend: Executed sevb_->LoopCbOnce()";
-  return 1;
 }
 
 int EventBaseBackend::eb_event_base_loopbreak() {
   return event_base_loopbreak(evb_);
-}
-
-int ShenangoEventBaseBackend::eb_event_base_loopbreak() {
-  throw std::logic_error("not implemented!");
 }
 
 int EventBaseBackend::eb_event_add(
@@ -164,26 +154,22 @@ int EventBaseBackend::eb_event_add(
   return event_add(event.getEvent(), timeout);
 }
 
-int ShenangoEventBaseBackend::eb_event_add(
-    Event& event, const struct timeval* timeout) {
-  throw std::logic_error("not implemented!");
+void ShenangoEventBaseBackend::eb_event_add(
+    ShenangoEventBaseBackendBase::Event& event, const struct timeval* timeout) {
+  rt::Event::AddEvent(event.getEvent(), timeout);
 }
 
 int EventBaseBackend::eb_event_del(EventBaseBackendBase::Event& event) {
   return event_del(event.getEvent());
 }
 
-int ShenangoEventBaseBackend::eb_event_del(EventBaseBackendBase::Event& event) {
-  throw std::logic_error("not implemented!");
+void ShenangoEventBaseBackend::eb_event_del(ShenangoEventBaseBackendBase::Event& event) {
+  return rt::Event::DelEvent(event.getEvent());
 }
 
 bool EventBaseBackend::eb_event_active(Event& event, int res) {
   event_active(event.getEvent(), res, 1);
   return true;
-}
-
-bool ShenangoEventBaseBackend::eb_event_active(Event& event, int res) {
-  throw std::logic_error("not implemented!");
 }
 
 EventBaseBackend::~EventBaseBackend() {
@@ -404,7 +390,6 @@ bool EventBase::loopBody(int flags, bool ignoreKeepAlive) {
   SCOPE_EXIT { invokingLoop_ = false; };
 
   int res = 0;
-  int sres = 0; // TODO: do something with sres
   bool ranLoopCallbacks;
   bool blocking = !(flags & EVLOOP_NONBLOCK);
   bool once = (flags & EVLOOP_ONCE);
@@ -447,10 +432,10 @@ bool EventBase::loopBody(int flags, bool ignoreKeepAlive) {
     // we don't have to handle anything to start with...
     if (blocking && loopCallbacks_.empty()) {
       res = evb_->eb_event_base_loop(EVLOOP_ONCE);
-      sres = sevb_->eb_event_base_loop(EVLOOP_ONCE);
+      sevb_->eb_event_base_loop(EVLOOP_ONCE);
     } else {
       res = evb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
-      sres = sevb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
+      sevb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
     }
 
     ranLoopCallbacks = runLoopCallbacks();
@@ -884,6 +869,10 @@ void EventBase::scheduleAt(Func&& fn, TimePoint const& timeout) {
 
 event_base* EventBase::getLibeventBase() const {
   return evb_ ? (evb_->getEventBase()) : nullptr;
+}
+
+rt::EventLoop* EventBase::getShenangoEventBase() const {
+  return sevb_ ? (sevb_->getEventBase()) : nullptr;
 }
 
 const char* EventBase::getLibeventVersion() {

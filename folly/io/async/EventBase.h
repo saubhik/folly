@@ -34,6 +34,7 @@
 #include <glog/logging.h>
 
 #include "thread.h"
+#include "sh_event.h"
 
 #include <folly/Executor.h>
 #include <folly/Function.h>
@@ -55,6 +56,7 @@
 
 namespace folly {
 class EventBaseBackendBase;
+class ShenangoEventBaseBackendBase;
 
 using Cob = Func; // defined in folly/Executor.h
 
@@ -717,11 +719,13 @@ class EventBase : public TimeoutManager,
   }
 
   EventBaseBackendBase* getBackend() { return evb_.get(); }
+  ShenangoEventBaseBackendBase* getShenangoBackend() { return sevb_.get(); }
   // --------- interface to underlying libevent base ------------
   // Avoid using these functions if possible.  These functions are not
   // guaranteed to always be present if we ever provide alternative EventBase
   // implementations that do not use libevent internally.
   event_base* getLibeventBase() const;
+  rt::EventLoop* getShenangoEventBase() const;
 
   static const char* getLibeventVersion();
   static const char* getLibeventMethod();
@@ -964,7 +968,7 @@ class EventBase : public TimeoutManager,
 
   // pointer to underlying backend class doing the heavy lifting
   std::unique_ptr<EventBaseBackendBase> evb_;
-  std::unique_ptr<EventBaseBackendBase> sevb_; // for shenango event loop
+  std::unique_ptr<ShenangoEventBaseBackendBase> sevb_; // for shenango event loop
 };
 
 template <typename T>
