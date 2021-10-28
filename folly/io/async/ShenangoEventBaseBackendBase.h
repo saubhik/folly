@@ -38,7 +38,9 @@ class ShenangoEventBaseEvent {
     event_ = rt::Event::CreateEvent(sock, events, callback, arg);
   }
 
+  rt::UdpConn* eb_ev_fd() const { return event_->GetSocket(); }
   void eb_ev_base(EventBase* evb);
+  EventBase* eb_ev_base() const { return evb_; }
   void eb_event_base_set(EventBase* evb);
   void eb_event_add(const struct timeval* timeout);
   void eb_event_del();

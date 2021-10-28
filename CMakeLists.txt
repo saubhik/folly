@@ -757,6 +757,8 @@ if (BUILD_TESTS)
           #EventHandlerTest.cpp
           # The async signal handler is not supported on Windows.
           #AsyncSignalHandlerTest.cpp
+      # TEST EventHandlerTest SOURCES EventHandlerTest.cpp
+      TEST ShenangoEventHandlerTest SOURCES ShenangoEventHandlerTest.cpp
       # TEST async_timeout_test SOURCES AsyncTimeoutTest.cpp
       # TEST AsyncUDPSocketTest SOURCES AsyncUDPSocketTest.cpp
       # TEST DelayedDestructionTest SOURCES DelayedDestructionTest.cpp

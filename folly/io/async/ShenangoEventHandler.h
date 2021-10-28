@@ -4,6 +4,8 @@ extern "C" {
 
 #include "net.h"
 
+#include <cassert>
+
 #include <folly/io/async/ShenangoEventBaseBackendBase.h>
 
 namespace folly {
@@ -30,18 +32,17 @@ class ShenangoEventHandler {
   virtual ~ShenangoEventHandler();
 
   virtual void handlerReady(uint16_t events) noexcept = 0;
-  bool registerHandler(uint16_t events) { return registerImpl(events, false); }
+  bool registerHandler(uint16_t events) { return registerImpl(events); }
   void unregisterHandler();
   bool isHandlerRegistered() const { return event_.isEventRegistered(); };
   void attachEventBase(EventBase* eventBase);
   void detachEventBase();
   void initHandler(EventBase* eventBase, rt::UdpConn* sock);
   uint16_t getRegisteredEvents() const;
-  bool registerInternalHandler(uint16_t events) { return registerImpl(events, true); }
   bool isPending() const;
 
  private:
-  bool registerImpl(uint16_t events, bool internal);
+  bool registerImpl(uint16_t events);
   void ensureNotRegistered(const char* fn);
   void setEventBase(EventBase* eventBase);
   static sh_event_callback_fn callbackFn;
@@ -51,6 +52,7 @@ class ShenangoEventHandler {
 };
 
 ShenangoEventHandler::ShenangoEventHandler(EventBase* eventBase, rt::UdpConn* sock) {
+  // Currently, event flags are not used inside shenango.
   event_.eb_event_set(sock, 0, &callbackFn, this);
   if (eventBase != nullptr) {
     setEventBase(eventBase);
@@ -61,6 +63,12 @@ ShenangoEventHandler::ShenangoEventHandler(EventBase* eventBase, rt::UdpConn* so
 }
 
 ShenangoEventHandler::~ShenangoEventHandler() { unregisterHandler(); }
+
+bool ShenangoEventHandler::registerImpl(uint16_t events) {
+  assert(event_.eb_ev_base() != nullptr);
+
+  // No need to update flags using events, as shenango does not use flags for now.
+}
 
 void ShenangoEventHandler::unregisterHandler() {
   if (isHandlerRegistered()) {
