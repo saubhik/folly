@@ -18,6 +18,8 @@
 
 #include <memory>
 
+#include "net.h"
+
 #include <folly/io/async/EventUtil.h>
 #include <folly/net/NetOps.h>
 #include <folly/portability/Event.h>

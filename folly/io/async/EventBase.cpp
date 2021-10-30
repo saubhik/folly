@@ -32,6 +32,7 @@
 #include <folly/String.h>
 #include <folly/io/async/EventBaseAtomicNotificationQueue.h>
 #include <folly/io/async/EventBaseBackendBase.h>
+#include <folly/io/async/ShenangoEventBaseBackendBase.h>
 #include <folly/io/async/VirtualEventBase.h>
 #include <folly/portability/Unistd.h>
 #include <folly/synchronization/Baton.h>
@@ -39,6 +40,20 @@
 
 namespace {
 constexpr folly::StringPiece executorName = "EventBase";
+
+class ShenangoEventBaseBackend : public folly::ShenangoEventBaseBackendBase {
+ public:
+  ShenangoEventBaseBackend();
+  explicit ShenangoEventBaseBackend(rt::EventLoop* sevb);
+
+  rt::EventLoop* getEventBase() override { return sevb_; }
+  void eb_event_base_loop(int flags) override;
+  void eb_event_add(Event& event, const struct timeval* timeout) override;
+  void eb_event_del(Event& event) override;
+
+ private:
+  rt::EventLoop* sevb_;
+};
 
 class EventBaseBackend : public folly::EventBaseBackendBase {
  public:
@@ -97,6 +112,15 @@ EventBaseBackend::EventBaseBackend() {
   }
 }
 
+ShenangoEventBaseBackend::ShenangoEventBaseBackend() {
+  sevb_ = rt::EventLoop::CreateWaiter();
+
+  if (UNLIKELY(sevb_ == nullptr)) {
+    LOG(ERROR) << "EventBase(): Failed to init shenango event base.";
+    folly::throwSystemError("error in ShenangoEventBaseBackend::ShenangoEventBaseBackend()");
+  }
+}
+
 EventBaseBackend::EventBaseBackend(event_base* evb) : evb_(evb) {
   if (UNLIKELY(evb_ == nullptr)) {
     LOG(ERROR) << "EventBase(): Pass nullptr as event base.";
@@ -104,8 +128,21 @@ EventBaseBackend::EventBaseBackend(event_base* evb) : evb_(evb) {
   }
 }
 
+ShenangoEventBaseBackend::ShenangoEventBaseBackend(rt::EventLoop* sevb) : sevb_(sevb) {
+  if (UNLIKELY(sevb_ == nullptr)) {
+    LOG(ERROR) << "EventBase(): Pass nullptr as shenango event base.";
+    throw std::invalid_argument("EventBase(): shenango event base cannot be nullptr");
+  }
+}
+
 int EventBaseBackend::eb_event_base_loop(int flags) {
   return event_base_loop(evb_, flags);
+}
+
+void ShenangoEventBaseBackend::eb_event_base_loop(int flags) {
+  assert(flags & EVLOOP_ONCE);
+  sevb_->LoopCbOnce();
+  VLOG(11) << "ShenangoEventBaseBackend: Executed sevb_->LoopCbOnce()";
 }
 
 int EventBaseBackend::eb_event_base_loopbreak() {
@@ -117,8 +154,17 @@ int EventBaseBackend::eb_event_add(
   return event_add(event.getEvent(), timeout);
 }
 
+void ShenangoEventBaseBackend::eb_event_add(
+    ShenangoEventBaseBackendBase::Event& event, const struct timeval* timeout) {
+  rt::Event::AddEvent(event.getEvent(), timeout);
+}
+
 int EventBaseBackend::eb_event_del(EventBaseBackendBase::Event& event) {
   return event_del(event.getEvent());
+}
+
+void ShenangoEventBaseBackend::eb_event_del(ShenangoEventBaseBackendBase::Event& event) {
+  return rt::Event::DelEvent(event.getEvent());
 }
 
 bool EventBaseBackend::eb_event_active(Event& event, int res) {
@@ -198,6 +244,7 @@ EventBase::EventBase(Options options)
       executionObserver_(nullptr) {
   evb_ =
       options.backendFactory ? options.backendFactory() : getDefaultBackend();
+  sevb_ = std::make_unique<ShenangoEventBaseBackend>();
   initNotificationQueue();
 }
 
@@ -385,8 +432,10 @@ bool EventBase::loopBody(int flags, bool ignoreKeepAlive) {
     // we don't have to handle anything to start with...
     if (blocking && loopCallbacks_.empty()) {
       res = evb_->eb_event_base_loop(EVLOOP_ONCE);
+      sevb_->eb_event_base_loop(EVLOOP_ONCE);
     } else {
       res = evb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
+      sevb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
     }
 
     ranLoopCallbacks = runLoopCallbacks();
@@ -820,6 +869,10 @@ void EventBase::scheduleAt(Func&& fn, TimePoint const& timeout) {
 
 event_base* EventBase::getLibeventBase() const {
   return evb_ ? (evb_->getEventBase()) : nullptr;
+}
+
+rt::EventLoop* EventBase::getShenangoEventBase() const {
+  return sevb_ ? (sevb_->getEventBase()) : nullptr;
 }
 
 const char* EventBase::getLibeventVersion() {

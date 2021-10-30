@@ -155,6 +155,8 @@ list(APPEND FOLLY_LINK_LIBRARIES /proj/quic-server-PG0/users/saubhik/caladan/lib
 list(APPEND FOLLY_LINK_LIBRARIES /proj/quic-server-PG0/users/saubhik/caladan/libnet.a)
 list(APPEND FOLLY_LINK_LIBRARIES /proj/quic-server-PG0/users/saubhik/caladan/libbase.a)
 
+list(APPEND FOLLY_LINK_LIBRARIES /usr/local/lib/libfmt.a)
+
 # need to set the linker script
 set(CMAKE_EXE_LINKER_FLAGS "-T /proj/quic-server-PG0/users/saubhik/caladan/base/base.ld")
 
