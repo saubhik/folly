@@ -764,7 +764,7 @@ if (BUILD_TESTS)
       # TEST DelayedDestructionTest SOURCES DelayedDestructionTest.cpp
       # TEST DelayedDestructionBaseTest SOURCES DelayedDestructionBaseTest.cpp
       # TEST DestructorCheckTest SOURCES DestructorCheckTest.cpp
-      TEST EventBaseTest SOURCES EventBaseTest.cpp
+      # TEST EventBaseTest SOURCES EventBaseTest.cpp
       # TEST EventBaseLocalTest SOURCES EventBaseLocalTest.cpp
       # TEST HHWheelTimerTest SOURCES HHWheelTimerTest.cpp
       # TEST HHWheelTimerSlowTests SLOW
