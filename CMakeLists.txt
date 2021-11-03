@@ -760,7 +760,7 @@ if (BUILD_TESTS)
       # TEST EventHandlerTest SOURCES EventHandlerTest.cpp
       TEST ShenangoEventHandlerTest SOURCES ShenangoEventHandlerTest.cpp
       # TEST async_timeout_test SOURCES AsyncTimeoutTest.cpp
-      # TEST AsyncUDPSocketTest SOURCES AsyncUDPSocketTest.cpp
+      TEST AsyncUDPSocketTest SOURCES AsyncUDPSocketTest.cpp
       # TEST DelayedDestructionTest SOURCES DelayedDestructionTest.cpp
       # TEST DelayedDestructionBaseTest SOURCES DelayedDestructionBaseTest.cpp
       # TEST DestructorCheckTest SOURCES DestructorCheckTest.cpp
