@@ -46,12 +46,14 @@ class ShenangoEventHandler {
 
   void detachEventBase();
 
+  void changeHandlerFD(rt::UdpConn* fd);
+
   void initHandler(EventBase *eventBase, rt::UdpConn *sock);
 
  private:
   bool registerImpl(uint16_t events);
 
-  void ensureNotRegistered(const char *fn);
+  void ensureNotRegistered(const char *fn) const;
 
   void setEventBase(EventBase *eventBase);
 
@@ -123,6 +125,13 @@ void ShenangoEventHandler::detachEventBase() {
   event_.eb_ev_base(nullptr);
 }
 
+void ShenangoEventHandler::changeHandlerFD(rt::UdpConn* fd) {
+  ensureNotRegistered(__func__);
+  auto* evb = event_.eb_ev_base();
+  event_.eb_event_set(fd, 0, &ShenangoEventCallback, this);
+  event_.eb_ev_base(evb);
+}
+
 void
 ShenangoEventHandler::initHandler(EventBase *eventBase, rt::UdpConn *sock) {
   ensureNotRegistered(__func__);
@@ -130,7 +139,7 @@ ShenangoEventHandler::initHandler(EventBase *eventBase, rt::UdpConn *sock) {
   setEventBase(eventBase);
 }
 
-void ShenangoEventHandler::ensureNotRegistered(const char *fn) {
+void ShenangoEventHandler::ensureNotRegistered(const char *fn) const {
   // Neither the EventBase nor file descriptor may be changed while the
   // handler is registered.  Treat it as a programmer bug and abort the program
   // if this requirement is violated.

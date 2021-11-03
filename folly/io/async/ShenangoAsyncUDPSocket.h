@@ -81,33 +81,6 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
     virtual ~ReadCallback() = default;
   };
 
-  class ErrMessageCallback {
-   public:
-    virtual ~ErrMessageCallback() = default;
-
-    /**
-     * errMessage() will be invoked when kernel puts a message to
-     * the error queue associated with the socket.
-     *
-     * @param cmsg      Reference to cmsghdr structure describing
-     *                  a message read from error queue associated
-     *                  with the socket.
-     */
-    virtual void errMessage(const cmsghdr& cmsg) noexcept = 0;
-
-    /**
-     * errMessageError() will be invoked if an error occurs reading a message
-     * from the socket error stream.
-     *
-     * @param ex        An exception describing the error that occurred.
-     */
-    virtual void errMessageError(const AsyncSocketException& ex) noexcept = 0;
-  };
-
-  static void fromMsg(
-      FOLLY_MAYBE_UNUSED ReadCallback::OnDataAvailableParams& params,
-      FOLLY_MAYBE_UNUSED struct msghdr& msg);
-
   using IOBufFreeFunc = folly::Function<void(std::unique_ptr<folly::IOBuf>&&)>;
 
   struct WriteOptions {
@@ -125,54 +98,15 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
    * given event base
    */
   explicit ShenangoAsyncUDPSocket(EventBase* evb);
-
   ~ShenangoAsyncUDPSocket() override;
 
-  /**
-   * Returns the address server is listening on
-   */
   virtual const folly::SocketAddress& address() const {
     CHECK_NE(nullptr, fd_->LocalAddr()) << "Server not yet bound to an address";
     return localAddress_;
   }
 
-  /**
-   * Contains options to pass to bind.
-   */
-  struct BindOptions {
-    constexpr BindOptions() noexcept {}
-    // Whether IPV6_ONLY should be set on the socket.
-    // bool bindV6Only{true};
-  };
+  virtual void bind(const folly::SocketAddress& address);
 
-  /**
-   * Bind the socket to the following address. If port is not
-   * set in the `address` an ephemeral port is chosen and you can
-   * use `address()` method above to get it after this method successfully
-   * returns. The parameter BindOptions contains parameters for the bind.
-   */
-  virtual void bind(
-      const folly::SocketAddress& address, BindOptions options = BindOptions());
-
-  /**
-   * Connects the UDP socket to a remote destination address provided in
-   * address. This can speed up UDP writes on linux because it will cache flow
-   * state on connects.
-   * Using connect has many quirks, and you should be aware of them before using
-   * this API:
-   * 1. If this is called before bind, the socket will be automatically bound to
-   * the IP address of the current default network interface.
-   * 2. Normally UDP can use the 2 tuple (src ip, src port) to steer packets
-   * sent by the peer to the socket, however after connecting the socket, only
-   * packets destined to the destination address specified in connect() will be
-   * forwarded and others will be dropped. If the server can send a packet
-   * from a different destination port / IP then you probably do not want to use
-   * this API.
-   * 3. It can be called repeatedly on either the client or server however it's
-   * normally only useful on the client and not server.
-   *
-   * Returns the result of calling the connect syscall.
-   */
   virtual void connect(const folly::SocketAddress& address);
 
   /**
@@ -184,16 +118,14 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
   virtual void setFD(rt::UdpConn* fd, FDOwnership ownership);
 
   /**
-   * Send the data in buffer to destination. Returns the return code from
-   * ::sendmsg.
+   * Send the data in buffer to destination.
    */
   virtual ssize_t write(
       const folly::SocketAddress& address,
       const std::unique_ptr<folly::IOBuf>& buf);
 
   /**
-   * Send the data in buffers to destination. Returns the return code from
-   * ::sendmmsg.
+   * Send the data in buffers to destination.
    * bufs is an array of std::unique_ptr<folly::IOBuf>
    * of size num
    */
@@ -245,11 +177,6 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
 
   EventBase* getEventBase() const { return eventBase_; }
 
-  /**
-   * Callback for receiving errors on the UDP sockets
-   */
-  virtual void setErrMessageCallback(ErrMessageCallback* errMessageCallback);
-
   virtual bool isBound() const { return fd_->LocalAddr() != nullptr; }
 
   virtual bool isReading() const { return readCallback_ != nullptr; }
@@ -280,10 +207,6 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
       size_t count,
       struct mmsghdr* msgvec);
 
-  size_t handleErrMessages() noexcept;
-
-  void failErrMessageRead(const AsyncSocketException& ex);
-
   static auto constexpr kDefaultReadsPerEvent = 1;
 
   // Non-null only when we are reading
@@ -293,14 +216,8 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
   ShenangoAsyncUDPSocket(const ShenangoAsyncUDPSocket&) = delete;
   ShenangoAsyncUDPSocket& operator=(const ShenangoAsyncUDPSocket&) = delete;
 
-  void init(sa_family_t family, BindOptions bindOptions);
-
   // ShenangoEventHandler
   void handlerReady(uint16_t events) noexcept override;
-
-  void handleRead() noexcept;
-
-  bool updateRegistration() noexcept;
 
   EventBase* eventBase_;
   folly::SocketAddress localAddress_;
@@ -315,8 +232,9 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
   folly::SocketAddress connectedAddress_;
   bool connected_{false};
 
-  int rcvBuf_{0};
-  int sndBuf_{0};
+  // TODO: Use udp_set_buffers()?
+  // int rcvBuf_{0};
+  // int sndBuf_{0};
 
   // packet timestamping
   folly::Optional<int> ts_;
