@@ -8,6 +8,7 @@ extern "C" {
 
 #include <folly/io/async/ShenangoEventBaseBackendBase.h>
 #include <folly/io/async/EventBase.h>
+#include <folly/net/ShNetworkSocket.h>
 
 namespace folly {
 
@@ -25,12 +26,12 @@ class ShenangoEventHandler {
     ET = SEV_ET,
   };
 
-  explicit ShenangoEventHandler(EventBase *eventBase = nullptr,
-                                rt::UdpConn *sock = nullptr);
+  explicit ShenangoEventHandler(EventBase* eventBase = nullptr,
+                                ShNetworkSocket fd = ShNetworkSocket());
 
-  ShenangoEventHandler(const ShenangoEventHandler &) = delete;
+  ShenangoEventHandler(const ShenangoEventHandler&) = delete;
 
-  ShenangoEventHandler &operator=(const ShenangoEventHandler &) = delete;
+  ShenangoEventHandler& operator=(const ShenangoEventHandler&) = delete;
 
   virtual ~ShenangoEventHandler();
 
@@ -42,31 +43,31 @@ class ShenangoEventHandler {
 
   bool isHandlerRegistered() const { return event_.isEventRegistered(); };
 
-  void attachEventBase(EventBase *eventBase);
+  virtual void attachEventBase(EventBase* eventBase);
 
-  void detachEventBase();
+  virtual void detachEventBase();
 
-  void changeHandlerFD(rt::UdpConn* fd);
+  void changeHandlerFD(ShNetworkSocket fd);
 
-  void initHandler(EventBase *eventBase, rt::UdpConn *sock);
+  void initHandler(EventBase* eventBase, ShNetworkSocket fd);
 
  private:
   bool registerImpl(uint16_t events);
 
-  void ensureNotRegistered(const char *fn) const;
+  void ensureNotRegistered(const char* fn) const;
 
-  void setEventBase(EventBase *eventBase);
+  void setEventBase(EventBase* eventBase);
 
-  static void shenangoEventCallback(void *arg);
+  static void shenangoEventCallback(void* arg);
 
   ShenangoEventBaseBackendBase::Event event_;
-  EventBase *eventBase_;
+  EventBase* eventBase_;
 };
 
-ShenangoEventHandler::ShenangoEventHandler(EventBase *eventBase,
-                                           rt::UdpConn *sock) {
+ShenangoEventHandler::ShenangoEventHandler(EventBase* eventBase,
+                                           ShNetworkSocket fd) {
   // Currently, event flags are not used inside shenango.
-  event_.eb_event_set(sock, 0, &shenangoEventCallback, this);
+  event_.eb_event_set(fd.data, 0, &shenangoEventCallback, this);
   if (eventBase != nullptr) {
     setEventBase(eventBase);
   } else {
@@ -110,7 +111,7 @@ void ShenangoEventHandler::unregisterHandler() {
   }
 }
 
-void ShenangoEventHandler::attachEventBase(EventBase *eventBase) {
+void ShenangoEventHandler::attachEventBase(EventBase* eventBase) {
   // attachEventBase() may only be called on detached handlers
   assert(event_.eb_ev_base() == nullptr);
   assert(!isHandlerRegistered());
@@ -125,21 +126,21 @@ void ShenangoEventHandler::detachEventBase() {
   event_.eb_ev_base(nullptr);
 }
 
-void ShenangoEventHandler::changeHandlerFD(rt::UdpConn* fd) {
+void ShenangoEventHandler::changeHandlerFD(ShNetworkSocket fd) {
   ensureNotRegistered(__func__);
   auto* evb = event_.eb_ev_base();
-  event_.eb_event_set(fd, 0, &ShenangoEventCallback, this);
+  event_.eb_event_set(fd.data, 0, &shenangoEventCallback, this);
   event_.eb_ev_base(evb);
 }
 
 void
-ShenangoEventHandler::initHandler(EventBase *eventBase, rt::UdpConn *sock) {
+ShenangoEventHandler::initHandler(EventBase* eventBase, ShNetworkSocket fd) {
   ensureNotRegistered(__func__);
-  event_.eb_event_set(sock, 0, &shenangoEventCallback, this);
+  event_.eb_event_set(fd.data, 0, &shenangoEventCallback, this);
   setEventBase(eventBase);
 }
 
-void ShenangoEventHandler::ensureNotRegistered(const char *fn) const {
+void ShenangoEventHandler::ensureNotRegistered(const char* fn) const {
   // Neither the EventBase nor file descriptor may be changed while the
   // handler is registered.  Treat it as a programmer bug and abort the program
   // if this requirement is violated.
@@ -149,15 +150,14 @@ void ShenangoEventHandler::ensureNotRegistered(const char *fn) const {
   }
 }
 
-void ShenangoEventHandler::setEventBase(EventBase *eventBase) {
+void ShenangoEventHandler::setEventBase(EventBase* eventBase) {
   event_.eb_event_base_set(eventBase);
   eventBase_ = eventBase;
 }
 
 void
-ShenangoEventHandler::shenangoEventCallback(void *arg) {
-  VLOG(11) << "ShenangoEventHandler::shenangoEventCallback() called!";
-  auto handler = reinterpret_cast<ShenangoEventHandler *>(arg);
+ShenangoEventHandler::shenangoEventCallback(void* arg) {
+  auto handler = reinterpret_cast<ShenangoEventHandler*>(arg);
 
   auto observer = handler->eventBase_->getExecutionObserver();
   if (observer) {

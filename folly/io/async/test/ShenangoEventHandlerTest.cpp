@@ -10,6 +10,7 @@ extern "C" {
 
 #include <folly/io/async/EventBase.h>
 #include <folly/io/async/ShenangoEventHandler.h>
+#include <folly/io/async/ShenangoAsyncUDPSocket.h>
 
 namespace {
 
@@ -18,9 +19,9 @@ constexpr int port = 8000;
 
 class ShenangoEventHandlerMock : public folly::ShenangoEventHandler {
  public:
-  ShenangoEventHandlerMock(folly::EventBase* eb, rt::UdpConn* sock)
-      : ShenangoEventHandler(eb, sock), sock_(sock) {
-    sock_->SetNonblocking(true);
+  ShenangoEventHandlerMock(folly::EventBase* eb, folly::NetworkSocket fd)
+      : ShenangoEventHandler(eb, sock), fd_(fd) {
+    fd_.data->SetNonblocking(true);
   };
 
  private:
@@ -30,7 +31,7 @@ class ShenangoEventHandlerMock : public folly::ShenangoEventHandler {
     // Make sure to drain the queue as a callback might be executed
     // after multiple triggers.
     while (true) {
-      ssize_t ret = sock_->ReadFrom(&rcv, sizeof(rcv), &raddr);
+      ssize_t ret = fd_.data->ReadFrom(&rcv, sizeof(rcv), &raddr);
       if (ret != static_cast<ssize_t>(sizeof(rcv))) {
         return;
       }
@@ -38,15 +39,15 @@ class ShenangoEventHandlerMock : public folly::ShenangoEventHandler {
     }
   }
 
-  rt::UdpConn* sock_;
+  folly::NetworkSocket fd_;
 };
 
 void ServerHandler(void* arg) {
-  rt::UdpConn* sock = rt::UdpConn::Listen({0, port});
-  if (!sock) panic("couldn't listen for connections");
+  folly::NetworkSocket fd = folly::netops::socket();
+  fd.data = rt::UdpConn::Listen({0, port})
 
   folly::EventBase eb;
-  ShenangoEventHandlerMock eh(&eb, sock);
+  ShenangoEventHandlerMock eh(&eb, fd);
 
   eh.registerHandler(
       folly::ShenangoEventHandler::READ | folly::ShenangoEventHandler::PERSIST);
@@ -57,6 +58,19 @@ void ServerHandler(void* arg) {
   eb.loop();
 
   sock->Shutdown();
+}
+
+void FollyClientHandler(void* arg) {
+  folly::SocketAddress server_;
+  std::unique_ptr<folly::ShenangoAsyncUDPSocket> socket_;
+
+  for (int i = 0; i < 10; ++i) {
+    auto ret = socket_->write(server_, folly::IOBuf::copyBuffer(
+        folly::to<std::string>("PING ", i)));
+    if (ret == -1) { panic("write failed!"); }
+  }
+
+  socket_->close();
 }
 
 void ClientHandler(void* arg) {

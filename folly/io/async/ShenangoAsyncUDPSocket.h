@@ -8,6 +8,8 @@
 #include <folly/io/async/AsyncSocketException.h>
 #include <folly/io/async/ShenangoEventHandler.h>
 #include <folly/io/async/EventBase.h>
+#include <folly/net/ShNetOps.h>
+#include <folly/net/ShNetworkSocket.h>
 
 namespace folly {
 
@@ -98,10 +100,11 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
    * given event base
    */
   explicit ShenangoAsyncUDPSocket(EventBase* evb);
+
   ~ShenangoAsyncUDPSocket() override;
 
   virtual const folly::SocketAddress& address() const {
-    CHECK_NE(nullptr, fd_->LocalAddr()) << "Server not yet bound to an address";
+    CHECK_NE(ShNetworkSocket(), fd_) << "Server not yet bound to an address";
     return localAddress_;
   }
 
@@ -115,7 +118,7 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
    * FDOwnership::SHARED. In case FD is shared, it will not be `close`d in
    * destructor.
    */
-  virtual void setFD(rt::UdpConn* fd, FDOwnership ownership);
+  virtual void setFD(ShNetworkSocket fd, FDOwnership ownership);
 
   /**
    * Send the data in buffer to destination.
@@ -165,25 +168,25 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
   /**
    * Stop listening on the socket.
    */
-  virtual void close();
+  void close();
 
   /**
    * Get internal FD used by this socket
    */
-  virtual rt::UdpConn* getNetworkSocket() const {
-    CHECK_NE(nullptr, fd_->LocalAddr()) << "Need to bind before getting FD out";
+  virtual ShNetworkSocket getNetworkSocket() const {
+    CHECK_NE(ShNetworkSocket(), fd_) << "Need to bind before getting FD out";
     return fd_;
   }
 
   EventBase* getEventBase() const { return eventBase_; }
 
-  virtual bool isBound() const { return fd_->LocalAddr() != nullptr; }
+  virtual bool isBound() const { return fd_ != ShNetworkSocket(); }
 
   virtual bool isReading() const { return readCallback_ != nullptr; }
 
-  virtual void detachEventBase();
+  void detachEventBase() override;
 
-  virtual void attachEventBase(folly::EventBase* evb);
+  void attachEventBase(folly::EventBase* evb) override;
 
   void setIOBufFreeFunc(IOBufFreeFunc&& ioBufFreeFunc) {
     ioBufFreeFunc_ = std::move(ioBufFreeFunc);
@@ -191,14 +194,14 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
 
  protected:
   virtual ssize_t
-  sendmsg(rt::UdpConn* socket, const struct msghdr* message, int flags) {
-    // TODO
+  sendmsg(ShNetworkSocket socket, const struct msghdr* message, int flags) {
+    return shnetops::sendmsg(socket, message, flags);
   }
 
   virtual int
-  sendmmsg(rt::UdpConn* socket, struct mmsghdr* msgvec, unsigned int vlen,
+  sendmmsg(ShNetworkSocket socket, struct mmsghdr* msgvec, unsigned int vlen,
            int flags) {
-    // TODO
+    return shnetops::sendmmsg(socket, msgvec, vlen, flags);
   }
 
   virtual int writeImpl(
@@ -216,13 +219,15 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
   ShenangoAsyncUDPSocket(const ShenangoAsyncUDPSocket&) = delete;
   ShenangoAsyncUDPSocket& operator=(const ShenangoAsyncUDPSocket&) = delete;
 
+  void init();
+
   // ShenangoEventHandler
-  void handlerReady(uint16_t events) noexcept override;
+  void handlerReady() noexcept override;
 
   EventBase* eventBase_;
   folly::SocketAddress localAddress_;
 
-  rt::UdpConn* fd_;
+  ShNetworkSocket fd_;
   FDOwnership ownership_;
 
   // Temp space to receive client address
@@ -238,8 +243,6 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
 
   // packet timestamping
   folly::Optional<int> ts_;
-
-  ErrMessageCallback* errMessageCallback_{nullptr};
 
   IOBufFreeFunc ioBufFreeFunc_;
 };
