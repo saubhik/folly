@@ -12,6 +12,8 @@
 #include <folly/portability/GTest.h>
 #include <folly/portability/Sockets.h>
 
+#include <utility>
+
 #include "thread.h"
 
 using folly::AsyncTimeout;
@@ -30,10 +32,10 @@ class UDPAcceptor : public ShenangoAsyncUDPServerSocket::Callback {
   UDPAcceptor(
       EventBase* evb,
       int n,
-      const folly::SocketAddress& serverAddress)
+      folly::SocketAddress  serverAddress)
       : evb_(evb),
         n_(n),
-        serverAddress_(serverAddress) {}
+        serverAddress_(std::move(serverAddress)) {}
 
   void onListenStarted() noexcept override {}
 
@@ -78,7 +80,7 @@ class UDPAcceptor : public ShenangoAsyncUDPServerSocket::Callback {
 class UDPServer {
  public:
   UDPServer(EventBase* evb, folly::SocketAddress addr, int n)
-      : evb_(evb), addr_(addr), evbs_(n) {}
+      : evb_(evb), addr_(std::move(addr)), evbs_(n) {}
 
   void start() {
     CHECK(evb_->isInEventBaseThread());
@@ -112,7 +114,7 @@ class UDPServer {
     socket_->listen();
   }
 
-  folly::SocketAddress address() const { return socket_->address(); }
+  [[nodiscard]] folly::SocketAddress address() const { return socket_->address(); }
 
   void shutdown() {
     CHECK(evb_->isInEventBaseThread());
@@ -219,7 +221,7 @@ class UDPClient
   }
 
   virtual void writePing(std::unique_ptr<folly::IOBuf> buf) {
-    auto ret = socket_->write(server_, std::move(buf));
+    auto ret = socket_->write(server_, buf);
     if (ret == -1) {
       error_ = true;
     }
@@ -260,7 +262,7 @@ class UDPClient
     sendPing();
   }
 
-  int pongRecvd() const { return pongRecvd_; }
+  [[nodiscard]] int pongRecvd() const { return pongRecvd_; }
 
   ShenangoAsyncUDPSocket& getSocket() { return *socket_; }
 
@@ -270,7 +272,7 @@ class UDPClient
     bindSocket_ = bindSocket;
   }
 
-  bool error() const { return error_; }
+  [[nodiscard]] bool error() const { return error_; }
 
   void incrementPongCount(int n) { pongRecvd_ += n; }
 
@@ -287,7 +289,7 @@ class UDPClient
   int pongRecvd_{0};
 
   int n_{0};
-  char buf_[1024];
+  char buf_[1024]{};
 };
 
 class UDPNotifyClient : public UDPClient {
@@ -301,14 +303,14 @@ class UDPNotifyClient : public UDPClient {
   bool shouldOnlyNotify() override { return true; }
 
   void onRecvMsg(ShenangoAsyncUDPSocket& sock) {
-    struct msghdr msg;
+    struct msghdr msg{};
     memset(&msg, 0, sizeof(msg));
 
     void* buf{};
     size_t len{};
     getReadBuffer(&buf, &len);
 
-    iovec vec;
+    iovec vec{};
     vec.iov_base = buf;
     vec.iov_len = len;
 
@@ -524,6 +526,7 @@ AsyncSocketIntegrationTest::performPingPongNotifyMmsgTest(
   return client;
 }
 
+
 TEST_F(AsyncSocketIntegrationTest, PingPong) {
   startServer();
   auto pingClient = performPingPongTest(server->address(), folly::none);
@@ -531,333 +534,275 @@ TEST_F(AsyncSocketIntegrationTest, PingPong) {
   ASSERT_GT(pingClient->pongRecvd(), 0);
 }
 
-TEST_F(AsyncSocketIntegrationTest, PingPongNotify) {
-  startServer();
-  auto pingClient = performPingPongNotifyTest(server->address(), folly::none);
-  // This should succeed.
-  ASSERT_GT(pingClient->pongRecvd(), 0);
-  ASSERT_TRUE(pingClient->notifyInvoked);
-}
+int main(int argc, char* argv[]) {
+  int ret;
 
-TEST_F(AsyncSocketIntegrationTest, PingPongNotifyMmsg) {
-  startServer();
-  auto pingClient =
-      performPingPongNotifyMmsgTest(server->address(), 10, folly::none);
-  // This should succeed.
-  ASSERT_EQ(pingClient->pongRecvd(), 10);
-  ASSERT_TRUE(pingClient->notifyInvoked);
-}
-
-class ConnectedAsyncSocketIntegrationTest
-    : public AsyncSocketIntegrationTest,
-      public WithParamInterface<BindSocket> {
-};
-
-TEST_P(ConnectedAsyncSocketIntegrationTest, ConnectedPingPong) {
-  server->setChangePortForWrites(false);
-  startServer();
-  auto pingClient =
-      performPingPongTest(server->address(), server->address(), GetParam());
-  // This should succeed
-  ASSERT_GT(pingClient->pongRecvd(), 0);
-}
-
-TEST_P(
-    ConnectedAsyncSocketIntegrationTest, ConnectedPingPongServerWrongAddress) {
-  server->setChangePortForWrites(true);
-  startServer();
-  auto pingClient =
-      performPingPongTest(server->address(), server->address(), GetParam());
-  // This should fail.
-  ASSERT_EQ(pingClient->pongRecvd(), 0);
-}
-
-TEST_P(
-    ConnectedAsyncSocketIntegrationTest, ConnectedPingPongClientWrongAddress) {
-  server->setChangePortForWrites(false);
-  startServer();
-  folly::SocketAddress connectAddr(
-      server->address().getIPAddress(), server->address().getPort() + 1);
-  auto pingClient =
-      performPingPongTest(server->address(), connectAddr, GetParam());
-  // This should fail.
-  ASSERT_EQ(pingClient->pongRecvd(), 0);
-  EXPECT_TRUE(pingClient->error());
-}
-
-TEST_P(
-    ConnectedAsyncSocketIntegrationTest,
-    ConnectedPingPongDifferentWriteAddress) {
-  server->setChangePortForWrites(false);
-  startServer();
-  folly::SocketAddress connectAddr(
-      server->address().getIPAddress(), server->address().getPort() + 1);
-  auto pingClient =
-      performPingPongTest(connectAddr, server->address(), GetParam());
-  // This should fail.
-  ASSERT_EQ(pingClient->pongRecvd(), 0);
-  EXPECT_TRUE(pingClient->error());
-}
-
-INSTANTIATE_TEST_CASE_P(
-    ConnectedAsyncSocketIntegrationTests,
-    ConnectedAsyncSocketIntegrationTest,
-    Values(BindSocket::YES, BindSocket::NO));
-
-TEST_F(AsyncSocketIntegrationTest, PingPongPauseResumeListening) {
-  startServer();
-
-  // Exchange should not happen when paused.
-  server->pauseAccepting();
-  EXPECT_FALSE(server->isAccepting());
-  auto pausedClient = performPingPongTest(server->address(), folly::none);
-  ASSERT_EQ(pausedClient->pongRecvd(), 0);
-
-  // Exchange does occur after resuming.
-  server->resumeAccepting();
-  EXPECT_TRUE(server->isAccepting());
-  auto pingClient = performPingPongTest(server->address(), folly::none);
-  ASSERT_GT(pingClient->pongRecvd(), 0);
-}
-
-class MockErrMessageCallback
-    : public ShenangoAsyncUDPSocket::ErrMessageCallback {
- public:
-  ~MockErrMessageCallback() override = default;
-
-  MOCK_METHOD1(errMessage_, void(const cmsghdr&));
-
-  void errMessage(const cmsghdr& cmsg) noexcept override { errMessage_(cmsg); }
-
-  MOCK_METHOD1(errMessageError_, void(const folly::AsyncSocketException&));
-
-  void errMessageError(
-      const folly::AsyncSocketException& ex) noexcept override {
-    errMessageError_(ex);
-  }
-};
-
-class MockUDPReadCallback : public ShenangoAsyncUDPSocket::ReadCallback {
- public:
-  ~MockUDPReadCallback() override = default;
-
-  MOCK_METHOD2(getReadBuffer_, void(void * *, size_t * ));
-
-  void getReadBuffer(void** buf, size_t* len) noexcept override {
-    getReadBuffer_(buf, len);
+  if (argc < 3) {
+    std::cerr << "usage: [cfg_file] [cmd] ..." << std::endl;
+    return -EINVAL;
   }
 
-  MOCK_METHOD0(shouldOnlyNotify, bool());
-
-  MOCK_METHOD1(onNotifyDataAvailable_, void(folly::ShenangoAsyncUDPSocket&));
-
-  void
-  onNotifyDataAvailable(folly::ShenangoAsyncUDPSocket& sock) noexcept override {
-    onNotifyDataAvailable_(sock);
+  std::string cmd = argv[2];
+  if (cmd == "server") {
+    ret = runtime_init(argv[1], startServer, NULL);
+    if (ret) {
+      printf("failed to start runtime\n");
+      return ret;
+    }
+  } else if (cmd != "client") {
+    std::cerr << "invalid command: " << cmd << std::endl;
+    return -EINVAL;
   }
 
-  MOCK_METHOD4(
-      onDataAvailable_,
-      void(const folly::SocketAddress&, size_t, bool, OnDataAvailableParams));
-
-  void onDataAvailable(
-      const folly::SocketAddress& client,
-      size_t len,
-      bool truncated,
-      OnDataAvailableParams params) noexcept override {
-    onDataAvailable_(client, len, truncated, params);
+  if (argc < 4) {
+    std::cerr << "usage: [cfg_file] client [remote_ip]" << std::endl;
+    return -EINVAL;
   }
 
-  MOCK_METHOD1(onReadError_, void(const folly::AsyncSocketException&));
+  ret = StringToAddr(argv[3], &raddr.ip);
+  if (ret)
+    return -EINVAL;
+  raddr.port = port;
 
-  void onReadError(const folly::AsyncSocketException& ex) noexcept override {
-    onReadError_(ex);
+  ret = runtime_init(argv[1], ClientHandler, NULL);
+  if (ret) {
+    printf("failed to start runtime\n");
+    return ret;
   }
 
-  MOCK_METHOD0(onReadClosed_, void());
-
-  void onReadClosed() noexcept override { onReadClosed_(); }
-};
-
-class ShenangoAsyncUDPSocketTest : public Test {
- public:
-  void SetUp() override {
-    socket_ = std::make_shared<ShenangoAsyncUDPSocket>(&evb_);
-    addr_ = folly::SocketAddress("127.0.0.1", 0);
-    socket_->bind(addr_);
-  }
-
-  EventBase evb_;
-  MockErrMessageCallback err;
-  MockUDPReadCallback readCb;
-  std::shared_ptr<ShenangoAsyncUDPSocket> socket_;
-  folly::SocketAddress addr_;
-};
-
-TEST_F(ShenangoAsyncUDPSocketTest, TestConnectAfterBind) {
-  socket_->connect(addr_);
+  return 0;
 }
 
-TEST_F(ShenangoAsyncUDPSocketTest, TestConnect) {
-  ShenangoAsyncUDPSocket socket(&evb_);
-  EXPECT_FALSE(socket.isBound());
-  folly::SocketAddress address("127.0.0.1", 443);
-  socket.connect(address);
-  EXPECT_TRUE(socket.isBound());
-
-  const auto& localAddr = socket.address();
-  EXPECT_TRUE(localAddr.isInitialized());
-  EXPECT_GT(localAddr.getPort(), 0);
-}
-
-TEST_F(ShenangoAsyncUDPSocketTest, TestErrToNonExistentServer) {
-  socket_->resumeRead(&readCb);
-  socket_->setErrMessageCallback(&err);
-  folly::SocketAddress addr("127.0.0.1", 10000);
-  bool errRecvd = false;
-#ifdef FOLLY_HAVE_MSG_ERRQUEUE
-  EXPECT_CALL(err, errMessage_(_))
-      .WillOnce(Invoke([this, &errRecvd](auto& cmsg) {
-        if ((cmsg.cmsg_level == SOL_IP && cmsg.cmsg_type == IP_RECVERR) ||
-            (cmsg.cmsg_level == SOL_IPV6 && cmsg.cmsg_type == IPV6_RECVERR)) {
-          const struct sock_extended_err* serr =
-              reinterpret_cast<const struct sock_extended_err*>(
-                  CMSG_DATA(&cmsg));
-          errRecvd =
-              (serr->ee_origin == SO_EE_ORIGIN_ICMP || SO_EE_ORIGIN_ICMP6);
-          LOG(ERROR) << "errno " << errnoStr(serr->ee_errno);
-        }
-        evb_.terminateLoopSoon();
-      }));
-#endif // FOLLY_HAVE_MSG_ERRQUEUE
-  socket_->write(addr, folly::IOBuf::copyBuffer("hey"));
-  evb_.loopForever();
-  EXPECT_TRUE(errRecvd);
-}
-
-TEST_F(ShenangoAsyncUDPSocketTest, TestUnsetErrCallback) {
-  socket_->resumeRead(&readCb);
-  socket_->setErrMessageCallback(&err);
-  socket_->setErrMessageCallback(nullptr);
-  folly::SocketAddress addr("127.0.0.1", 10000);
-  EXPECT_CALL(err, errMessage_(_)).Times(0);
-  socket_->write(addr, folly::IOBuf::copyBuffer("hey"));
-  evb_.timer().scheduleTimeoutFn(
-      [&] { evb_.terminateLoopSoon(); }, std::chrono::milliseconds(30));
-  evb_.loopForever();
-}
-
-TEST_F(ShenangoAsyncUDPSocketTest, CloseInErrorCallback) {
-  socket_->resumeRead(&readCb);
-  socket_->setErrMessageCallback(&err);
-  folly::SocketAddress addr("127.0.0.1", 10000);
-  bool errRecvd = false;
-  EXPECT_CALL(err, errMessage_(_)).WillOnce(Invoke([this, &errRecvd](auto&) {
-    errRecvd = true;
-    socket_->close();
-    evb_.terminateLoopSoon();
-  }));
-  socket_->write(addr, folly::IOBuf::copyBuffer("hey"));
-  socket_->write(addr, folly::IOBuf::copyBuffer("hey"));
-  evb_.loopForever();
-  EXPECT_TRUE(errRecvd);
-}
-
-TEST_F(ShenangoAsyncUDPSocketTest, TestNonExistentServerNoErrCb) {
-  socket_->resumeRead(&readCb);
-  folly::SocketAddress addr("127.0.0.1", 10000);
-  bool errRecvd = false;
-  folly::IOBufQueue readBuf;
-  EXPECT_CALL(readCb, getReadBuffer_(_, _))
-      .WillRepeatedly(Invoke([&readBuf](void** buf, size_t* len) {
-        auto readSpace = readBuf.preallocate(2000, 10000);
-        *buf = readSpace.first;
-        *len = readSpace.second;
-      }));
-  ON_CALL(readCb, onReadError_(_)).WillByDefault(Invoke([&errRecvd](auto& ex) {
-    LOG(ERROR) << ex.what();
-    errRecvd = true;
-  }));
-  socket_->write(addr, folly::IOBuf::copyBuffer("hey"));
-  evb_.timer().scheduleTimeoutFn(
-      [&] { evb_.terminateLoopSoon(); }, std::chrono::milliseconds(30));
-  evb_.loopForever();
-  EXPECT_FALSE(errRecvd);
-}
-
-TEST_F(ShenangoAsyncUDPSocketTest, TestBound) {
-  ShenangoAsyncUDPSocket socket(&evb_);
-  EXPECT_FALSE(socket.isBound());
-  folly::SocketAddress address("0.0.0.0", 0);
-  socket.bind(address);
-  EXPECT_TRUE(socket.isBound());
-}
-
-TEST_F(ShenangoAsyncUDPSocketTest, TestBoundUnixSocket) {
-  folly::test::TemporaryDirectory tmpDirectory;
-  const auto kTmpUnixSocketPath{tmpDirectory.path() / "unix_socket_path"};
-  ShenangoAsyncUDPSocket socket(&evb_);
-  EXPECT_FALSE(socket.isBound());
-  socket.bind(folly::SocketAddress::makeFromPath(kTmpUnixSocketPath.string()));
-  EXPECT_TRUE(socket.isBound());
-  socket.close();
-}
-
-TEST_F(ShenangoAsyncUDPSocketTest, TestAttachAfterDetachEvbWithReadCallback) {
-  socket_->resumeRead(&readCb);
-  EXPECT_TRUE(socket_->isHandlerRegistered());
-  socket_->detachEventBase();
-  EXPECT_FALSE(socket_->isHandlerRegistered());
-  socket_->attachEventBase(&evb_);
-  EXPECT_TRUE(socket_->isHandlerRegistered());
-}
-
-TEST_F(ShenangoAsyncUDPSocketTest, TestAttachAfterDetachEvbNoReadCallback) {
-  EXPECT_FALSE(socket_->isHandlerRegistered());
-  socket_->detachEventBase();
-  EXPECT_FALSE(socket_->isHandlerRegistered());
-  socket_->attachEventBase(&evb_);
-  EXPECT_FALSE(socket_->isHandlerRegistered());
-}
-
-TEST_F(ShenangoAsyncUDPSocketTest, TestDetachAttach) {
-  folly::EventBase evb2;
-  auto writeSocket = std::make_shared<folly::ShenangoAsyncUDPSocket>(&evb_);
-  folly::SocketAddress address("127.0.0.1", 0);
-  writeSocket->bind(address);
-  std::array<uint8_t, 1024> data;
-  std::atomic<int> packetsRecvd{0};
-  EXPECT_CALL(readCb, getReadBuffer_(_, _))
-      .WillRepeatedly(Invoke([&](void** buf, size_t* len) {
-        *buf = data.data();
-        *len = 1024;
-      }));
-  EXPECT_CALL(readCb, onDataAvailable_(_, _, _, _))
-      .WillRepeatedly(Invoke([&](const folly::SocketAddress&,
-                                 size_t,
-                                 bool,
-                                 OnDataAvailableParams) { packetsRecvd++; }));
-  socket_->resumeRead(&readCb);
-  writeSocket->write(socket_->address(), folly::IOBuf::copyBuffer("hello"));
-  while (packetsRecvd != 1) {
-    evb_.loopOnce();
-  }
-  EXPECT_EQ(packetsRecvd, 1);
-
-  socket_->detachEventBase();
-  std::thread t([&] { evb2.loopForever(); });
-  evb2.runInEventBaseThreadAndWait([&] { socket_->attachEventBase(&evb2); });
-  writeSocket->write(socket_->address(), folly::IOBuf::copyBuffer("hello"));
-  auto now = std::chrono::steady_clock::now();
-  while (packetsRecvd != 2 ||
-         std::chrono::steady_clock::now() <
-         now + std::chrono::milliseconds(10)) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
-  evb2.runInEventBaseThread([&] {
-    socket_ = nullptr;
-    evb2.terminateLoopSoon();
-  });
-  t.join();
-  EXPECT_EQ(packetsRecvd, 2);
-}
+//TEST_F(AsyncSocketIntegrationTest, PingPongNotify) {
+//  startServer();
+//  auto pingClient = performPingPongNotifyTest(server->address(), folly::none);
+//  // This should succeed.
+//  ASSERT_GT(pingClient->pongRecvd(), 0);
+//  ASSERT_TRUE(pingClient->notifyInvoked);
+//}
+//
+//TEST_F(AsyncSocketIntegrationTest, PingPongNotifyMmsg) {
+//  startServer();
+//  auto pingClient =
+//      performPingPongNotifyMmsgTest(server->address(), 10, folly::none);
+//  // This should succeed.
+//  ASSERT_EQ(pingClient->pongRecvd(), 10);
+//  ASSERT_TRUE(pingClient->notifyInvoked);
+//}
+//
+//class ConnectedAsyncSocketIntegrationTest
+//    : public AsyncSocketIntegrationTest,
+//      public WithParamInterface<BindSocket> {
+//};
+//
+//TEST_P(ConnectedAsyncSocketIntegrationTest, ConnectedPingPong) {
+//  startServer();
+//  auto pingClient =
+//      performPingPongTest(server->address(), server->address(), GetParam());
+//  // This should succeed
+//  ASSERT_GT(pingClient->pongRecvd(), 0);
+//}
+//
+//TEST_P(
+//    ConnectedAsyncSocketIntegrationTest, ConnectedPingPongServerWrongAddress) {
+//  startServer();
+//  auto pingClient =
+//      performPingPongTest(server->address(), server->address(), GetParam());
+//  // This should fail.
+//  ASSERT_EQ(pingClient->pongRecvd(), 0);
+//}
+//
+//TEST_P(
+//    ConnectedAsyncSocketIntegrationTest, ConnectedPingPongClientWrongAddress) {
+//  startServer();
+//  folly::SocketAddress connectAddr(
+//      server->address().getIPAddress(), server->address().getPort() + 1);
+//  auto pingClient =
+//      performPingPongTest(server->address(), connectAddr, GetParam());
+//  // This should fail.
+//  ASSERT_EQ(pingClient->pongRecvd(), 0);
+//  EXPECT_TRUE(pingClient->error());
+//}
+//
+//TEST_P(
+//    ConnectedAsyncSocketIntegrationTest,
+//    ConnectedPingPongDifferentWriteAddress) {
+//  startServer();
+//  folly::SocketAddress connectAddr(
+//      server->address().getIPAddress(), server->address().getPort() + 1);
+//  auto pingClient =
+//      performPingPongTest(connectAddr, server->address(), GetParam());
+//  // This should fail.
+//  ASSERT_EQ(pingClient->pongRecvd(), 0);
+//  EXPECT_TRUE(pingClient->error());
+//}
+//
+//INSTANTIATE_TEST_CASE_P(
+//    ConnectedAsyncSocketIntegrationTests,
+//    ConnectedAsyncSocketIntegrationTest,
+//    Values(BindSocket::YES, BindSocket::NO));
+//
+//TEST_F(AsyncSocketIntegrationTest, PingPongPauseResumeListening) {
+//  startServer();
+//
+//  // Exchange should not happen when paused.
+//  server->pauseAccepting();
+//  EXPECT_FALSE(server->isAccepting());
+//  auto pausedClient = performPingPongTest(server->address(), folly::none);
+//  ASSERT_EQ(pausedClient->pongRecvd(), 0);
+//
+//  // Exchange does occur after resuming.
+//  server->resumeAccepting();
+//  EXPECT_TRUE(server->isAccepting());
+//  auto pingClient = performPingPongTest(server->address(), folly::none);
+//  ASSERT_GT(pingClient->pongRecvd(), 0);
+//}
+//
+//class MockUDPReadCallback : public ShenangoAsyncUDPSocket::ReadCallback {
+// public:
+//  ~MockUDPReadCallback() override = default;
+//
+//  MOCK_METHOD2(getReadBuffer_, void(void * *, size_t * ));
+//
+//  void getReadBuffer(void** buf, size_t* len) noexcept override {
+//    getReadBuffer_(buf, len);
+//  }
+//
+//  MOCK_METHOD0(shouldOnlyNotify, bool());
+//
+//  MOCK_METHOD1(onNotifyDataAvailable_, void(folly::ShenangoAsyncUDPSocket&));
+//
+//  void
+//  onNotifyDataAvailable(folly::ShenangoAsyncUDPSocket& sock) noexcept override {
+//    onNotifyDataAvailable_(sock);
+//  }
+//
+//  MOCK_METHOD4(
+//      onDataAvailable_,
+//      void(const folly::SocketAddress&, size_t, bool, OnDataAvailableParams));
+//
+//  void onDataAvailable(
+//      const folly::SocketAddress& client,
+//      size_t len,
+//      bool truncated,
+//      OnDataAvailableParams params) noexcept override {
+//    onDataAvailable_(client, len, truncated, params);
+//  }
+//
+//  MOCK_METHOD1(onReadError_, void(const folly::AsyncSocketException&));
+//
+//  void onReadError(const folly::AsyncSocketException& ex) noexcept override {
+//    onReadError_(ex);
+//  }
+//
+//  MOCK_METHOD0(onReadClosed_, void());
+//
+//  void onReadClosed() noexcept override { onReadClosed_(); }
+//};
+//
+//class ShenangoAsyncUDPSocketTest : public Test {
+// public:
+//  void SetUp() override {
+//    socket_ = std::make_shared<ShenangoAsyncUDPSocket>(&evb_);
+//    addr_ = folly::SocketAddress("127.0.0.1", 0);
+//    socket_->bind(addr_);
+//  }
+//
+//  EventBase evb_;
+//  MockUDPReadCallback readCb;
+//  std::shared_ptr<ShenangoAsyncUDPSocket> socket_;
+//  folly::SocketAddress addr_;
+//};
+//
+//TEST_F(ShenangoAsyncUDPSocketTest, TestConnectAfterBind) {
+//  socket_->connect(addr_);
+//}
+//
+//TEST_F(ShenangoAsyncUDPSocketTest, TestConnect) {
+//  ShenangoAsyncUDPSocket socket(&evb_);
+//  EXPECT_FALSE(socket.isBound());
+//  folly::SocketAddress address("127.0.0.1", 443);
+//  socket.connect(address);
+//  EXPECT_TRUE(socket.isBound());
+//
+//  const auto& localAddr = socket.address();
+//  EXPECT_TRUE(localAddr.isInitialized());
+//  EXPECT_GT(localAddr.getPort(), 0);
+//}
+//
+//TEST_F(ShenangoAsyncUDPSocketTest, TestBound) {
+//  ShenangoAsyncUDPSocket socket(&evb_);
+//  EXPECT_FALSE(socket.isBound());
+//  folly::SocketAddress address("0.0.0.0", 0);
+//  socket.bind(address);
+//  EXPECT_TRUE(socket.isBound());
+//}
+//
+//TEST_F(ShenangoAsyncUDPSocketTest, TestBoundUnixSocket) {
+//  folly::test::TemporaryDirectory tmpDirectory;
+//  const auto kTmpUnixSocketPath{tmpDirectory.path() / "unix_socket_path"};
+//  ShenangoAsyncUDPSocket socket(&evb_);
+//  EXPECT_FALSE(socket.isBound());
+//  socket.bind(folly::SocketAddress::makeFromPath(kTmpUnixSocketPath.string()));
+//  EXPECT_TRUE(socket.isBound());
+//  socket.close();
+//}
+//
+//TEST_F(ShenangoAsyncUDPSocketTest, TestAttachAfterDetachEvbWithReadCallback) {
+//  socket_->resumeRead(&readCb);
+//  EXPECT_TRUE(socket_->isHandlerRegistered());
+//  socket_->detachEventBase();
+//  EXPECT_FALSE(socket_->isHandlerRegistered());
+//  socket_->attachEventBase(&evb_);
+//  EXPECT_TRUE(socket_->isHandlerRegistered());
+//}
+//
+//TEST_F(ShenangoAsyncUDPSocketTest, TestAttachAfterDetachEvbNoReadCallback) {
+//  EXPECT_FALSE(socket_->isHandlerRegistered());
+//  socket_->detachEventBase();
+//  EXPECT_FALSE(socket_->isHandlerRegistered());
+//  socket_->attachEventBase(&evb_);
+//  EXPECT_FALSE(socket_->isHandlerRegistered());
+//}
+//
+//TEST_F(ShenangoAsyncUDPSocketTest, TestDetachAttach) {
+//  folly::EventBase evb2;
+//  auto writeSocket = std::make_shared<folly::ShenangoAsyncUDPSocket>(&evb_);
+//  folly::SocketAddress address("127.0.0.1", 0);
+//  writeSocket->bind(address);
+//  std::array<uint8_t, 1024> data{};
+//  std::atomic<int> packetsRecvd{0};
+//  EXPECT_CALL(readCb, getReadBuffer_(_, _))
+//      .WillRepeatedly(Invoke([&](void** buf, size_t* len) {
+//        *buf = data.data();
+//        *len = 1024;
+//      }));
+//  EXPECT_CALL(readCb, onDataAvailable_(_, _, _, _))
+//      .WillRepeatedly(Invoke([&](const folly::SocketAddress&,
+//                                 size_t,
+//                                 bool,
+//                                 const OnDataAvailableParams&) { packetsRecvd++; }));
+//  socket_->resumeRead(&readCb);
+//  writeSocket->write(socket_->address(), folly::IOBuf::copyBuffer("hello"));
+//  while (packetsRecvd != 1) {
+//    evb_.loopOnce();
+//  }
+//  EXPECT_EQ(packetsRecvd, 1);
+//
+//  socket_->detachEventBase();
+//  std::thread t([&] { evb2.loopForever(); });
+//  evb2.runInEventBaseThreadAndWait([&] { socket_->attachEventBase(&evb2); });
+//  writeSocket->write(socket_->address(), folly::IOBuf::copyBuffer("hello"));
+//  auto now = std::chrono::steady_clock::now();
+//  while (packetsRecvd != 2 ||
+//         std::chrono::steady_clock::now() <
+//         now + std::chrono::milliseconds(10)) {
+//    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+//  }
+//  evb2.runInEventBaseThread([&] {
+//    socket_ = nullptr;
+//    evb2.terminateLoopSoon();
+//  });
+//  t.join();
+//  EXPECT_EQ(packetsRecvd, 2);
+//}

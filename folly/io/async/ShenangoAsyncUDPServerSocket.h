@@ -3,6 +3,7 @@
 #include <folly/Memory.h>
 #include <folly/io/IOBufQueue.h>
 #include <folly/io/async/ShenangoAsyncUDPSocket.h>
+#include <folly/io/async/AsyncSocketBase.h>
 #include <folly/io/async/EventBase.h>
 
 namespace folly {
@@ -102,9 +103,7 @@ class ShenangoAsyncUDPServerSocket
     }
   }
 
-  void bind(
-      const folly::SocketAddress& addy,
-      const SocketOptionMap& options = emptySocketOptionMap) {
+  void bind(const folly::SocketAddress& addy) {
     CHECK(!socket_);
 
     socket_ = std::make_shared<ShenangoAsyncUDPSocket>(evb_);
@@ -213,7 +212,7 @@ class ShenangoAsyncUDPServerSocket
     }
   }
 
-  void setEventCallback(EventRecvmsgCallback* cb) {
+  void setEventCallback(ShenangoEventRecvmsgCallback* cb) {
     eventCb_ = cb;
     applyEventCallback();
   }
@@ -320,7 +319,7 @@ class ShenangoAsyncUDPServerSocket
   // Temporary buffer for data
   folly::IOBufQueue buf_;
 
-  EventRecvmsgCallback* eventCb_{nullptr};
+  ShenangoEventRecvmsgCallback* eventCb_{nullptr};
 };
 
 } // namespace folly

@@ -3,6 +3,7 @@
 #include <boost/preprocessor/control/if.hpp>
 
 #include <folly/io/async/ShenangoAsyncUDPSocket.h>
+#include <folly/io/async/ShenangoEventHandler.h>
 #include <folly/io/async/EventBase.h>
 #include <folly/small_vector.h>
 
