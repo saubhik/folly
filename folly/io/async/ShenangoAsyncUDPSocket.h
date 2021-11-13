@@ -85,16 +85,6 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
 
   using IOBufFreeFunc = folly::Function<void(std::unique_ptr<folly::IOBuf>&&)>;
 
-  struct WriteOptions {
-    WriteOptions() = default;
-
-    // WriteOptions(int gsoVal, bool zerocopyVal)
-    //     : gso(gsoVal), zerocopy(zerocopyVal) {}
-    // int gso{0};
-    // bool zerocopy{false};
-    std::chrono::microseconds txTime{0};
-  };
-
   /**
    * Create a new UDP socket that will run in the
    * given event base
@@ -139,8 +129,7 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
 
   virtual ssize_t writeChain(
       const folly::SocketAddress& address,
-      std::unique_ptr<folly::IOBuf>&& buf,
-      WriteOptions options);
+      std::unique_ptr<folly::IOBuf>&& buf);
 
   virtual ssize_t writev(
       const folly::SocketAddress& address,
@@ -193,6 +182,11 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
   }
 
  protected:
+  struct full_netaddr {
+    netaddr addr;
+    socklen_t len;
+  };
+
   virtual ssize_t
   sendmsg(ShNetworkSocket socket, const struct msghdr* message, int flags) {
     return shnetops::sendmsg(socket, message, flags);
@@ -204,6 +198,14 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
     return shnetops::sendmmsg(socket, msgvec, vlen, flags);
   }
 
+  static void fillMsgVec(
+      Range<full_netaddr*> addrs,
+      const std::unique_ptr<folly::IOBuf>* bufs,
+      size_t count,
+      struct mmsghdr* msgvec,
+      struct iovec* iov,
+      size_t iov_count);
+
   virtual int writeImpl(
       Range<SocketAddress const*> addrs,
       const std::unique_ptr<folly::IOBuf>* bufs,
@@ -211,6 +213,7 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
       struct mmsghdr* msgvec);
 
   static auto constexpr kDefaultReadsPerEvent = 1;
+  uint16_t maxReadsPerEvent_{kDefaultReadsPerEvent};
 
   // Non-null only when we are reading
   ReadCallback* readCallback_;
@@ -223,6 +226,9 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
 
   // ShenangoEventHandler
   void handlerReady() noexcept override;
+
+  void handleRead() noexcept;
+  bool updateRegistration() noexcept;
 
   EventBase* eventBase_;
   folly::SocketAddress localAddress_;

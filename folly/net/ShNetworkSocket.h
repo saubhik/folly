@@ -1,25 +1,6 @@
-/*
- * Copyright (c) Facebook, Inc. and its affiliates.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 #pragma once
 
 #include <ostream>
-
-#include <folly/net/detail/SocketFileDescriptorMap.h>
-#include <folly/portability/Windows.h>
 
 #include "net.h"
 
@@ -30,54 +11,46 @@ namespace folly {
  * for explicitly converting to/from file descriptors, even on Windows.
  */
 struct ShNetworkSocket {
-#ifdef _WIN32
-  using native_handle_type = SOCKET;
-  static constexpr native_handle_type invalid_handle_value = INVALID_SOCKET;
-#elif defined(__XROS__)
-  using native_handle_type = void*;
-  static constexpr native_handle_type invalid_handle_value = nullptr;
-#else
   // using native_handle_type = int;
   // static constexpr native_handle_type invalid_handle_value = -1;
   using native_handle_type = rt::UdpConn*;
   static constexpr native_handle_type invalid_handle_value = nullptr;
-#endif
 
   native_handle_type data;
 
-  constexpr NetworkSocket() : data(invalid_handle_value) {}
-  constexpr explicit NetworkSocket(native_handle_type d) : data(d) {}
+  constexpr ShNetworkSocket() : data(invalid_handle_value) {}
+  constexpr explicit ShNetworkSocket(native_handle_type d) : data(d) {}
 
   template<typename T>
-  static NetworkSocket fromFd(T) = delete;
-  static NetworkSocket fromFd(rt::UdpConn* fd) { return NetworkSocket(fd); }
+  static ShNetworkSocket fromFd(T) = delete;
+  static ShNetworkSocket fromFd(rt::UdpConn* fd) { return ShNetworkSocket(fd); }
 
-  rt::UdpConn* toFd() const { return data; }
+  native_handle_type toFd() const { return data; }
 
   friend constexpr bool operator==(
-      const NetworkSocket& a, const NetworkSocket& b) noexcept {
+      const ShNetworkSocket& a, const ShNetworkSocket& b) noexcept {
     return a.data == b.data;
   }
 
   friend constexpr bool operator!=(
-      const NetworkSocket& a, const NetworkSocket& b) noexcept {
+      const ShNetworkSocket& a, const ShNetworkSocket& b) noexcept {
     return !(a == b);
   }
 };
 
 template<class CharT, class Traits>
 inline std::basic_ostream<CharT, Traits>& operator<<(
-    std::basic_ostream<CharT, Traits>& os, const NetworkSocket& addr) {
-  os << "folly::NetworkSocket(" << addr.data << ")";
+    std::basic_ostream<CharT, Traits>& os, const ShNetworkSocket& addr) {
+  os << "folly::ShNetworkSocket(" << addr.data << ")";
   return os;
 }
 } // namespace folly
 
 namespace std {
 template<>
-struct hash<folly::NetworkSocket> {
-  size_t operator()(const folly::NetworkSocket& s) const noexcept {
-    return std::hash<folly::NetworkSocket::native_handle_type>()(s.data);
+struct hash<folly::ShNetworkSocket> {
+  size_t operator()(const folly::ShNetworkSocket& s) const noexcept {
+    return std::hash<folly::ShNetworkSocket::native_handle_type>()(s.data);
   }
 };
 } // namespace std

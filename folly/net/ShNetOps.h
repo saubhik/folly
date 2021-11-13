@@ -237,35 +237,17 @@ struct mmsghdr {
 
 #endif
 
-namespace folly {
-namespace shnetops {
-// Poll descriptor is intended to be byte-for-byte identical to pollfd,
-// except that it is typed as containing a ShNetworkSocket for sane interactions.
-struct PollDescriptor {
-  ShNetworkSocket fd;
-  int16_t events;
-  int16_t revents;
-};
-
-ShNetworkSocket accept(ShNetworkSocket s, sockaddr* addr, socklen_t* addrlen);
+namespace folly::shnetops {
 int bind(ShNetworkSocket s, const netaddr* name);
 int close(ShNetworkSocket s);
 int connect(ShNetworkSocket s, const netaddr* name);
-// int getpeername(ShNetworkSocket s, sockaddr* name, socklen_t* namelen);
-// int getsockname(ShNetworkSocket s, sockaddr* name, socklen_t* namelen);
-// int getsockopt(
-//    ShNetworkSocket s, int level, int optname, void* optval, socklen_t* optlen);
-// int inet_aton(const char* cp, in_addr* inp);
-// int listen(ShNetworkSocket s, int backlog);
-// int poll(PollDescriptor fds[], nfds_t nfds, int timeout);
 ssize_t recv(ShNetworkSocket s, void* buf, size_t len, int flags);
 ssize_t recvfrom(
     ShNetworkSocket s,
     void* buf,
     size_t len,
     int flags,
-    sockaddr* from,
-    socklen_t* fromlen);
+    netaddr* from);
 ssize_t recvmsg(ShNetworkSocket s, msghdr* message, int flags);
 int recvmmsg(
     ShNetworkSocket s,
@@ -284,19 +266,9 @@ ssize_t sendto(
 ssize_t sendmsg(ShNetworkSocket socket, const msghdr* message, int flags);
 int sendmmsg(
     ShNetworkSocket socket, mmsghdr* msgvec, unsigned int vlen, int flags);
-//int setsockopt(
-//    ShNetworkSocket s,
-//    int level,
-//    int optname,
-//    const void* optval,
-//    socklen_t optlen);
-// int shutdown(ShNetworkSocket s, int how);
 ShNetworkSocket socket();
-// int socketpair(int domain, int type, int protocol, ShNetworkSocket sv[2]);
-
 // And now we diverge from the Posix way of doing things and just do things
 // our own way.
 int set_socket_non_blocking(ShNetworkSocket s);
 // int set_socket_close_on_exec(ShNetworkSocket s);
-} // namespace netops
 } // namespace folly
