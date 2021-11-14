@@ -430,13 +430,16 @@ bool EventBase::loopBody(int flags, bool ignoreKeepAlive) {
 
     // nobody can add loop callbacks from within this thread if
     // we don't have to handle anything to start with...
-    if (blocking && loopCallbacks_.empty()) {
-      res = evb_->eb_event_base_loop(EVLOOP_ONCE);
-      sevb_->eb_event_base_loop(EVLOOP_ONCE);
-    } else {
-      res = evb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
-      sevb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
-    }
+    //    if (blocking && loopCallbacks_.empty()) {
+    //      res = evb_->eb_event_base_loop(EVLOOP_ONCE);
+    //      sevb_->eb_event_base_loop(EVLOOP_ONCE);
+    //    } else {
+    //      res = evb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
+    //      sevb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
+    //    }
+
+    res = evb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
+    sevb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
 
     ranLoopCallbacks = runLoopCallbacks();
 

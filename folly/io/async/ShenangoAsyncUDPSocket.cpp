@@ -38,7 +38,9 @@ void ShenangoAsyncUDPSocket::init() {
         errno);
   }
 
-  auto g = folly::makeGuard([&] { shnetops::close(socket); });
+  VLOG(11) << "async UDP socket created!";
+
+  // auto g = folly::makeGuard([&] { shnetops::close(socket); });
 
   // put the socket in non-blocking mode
   int ret = shnetops::set_socket_non_blocking(socket);
@@ -49,13 +51,17 @@ void ShenangoAsyncUDPSocket::init() {
         errno);
   }
 
+  VLOG(11) << "async UDP socket is set to non blocking!";
+
   // success
-  g.dismiss();
+  // g.dismiss();
   fd_ = socket;
   ownership_ = FDOwnership::OWNS;
 
   // attach to EventHandler
   ShenangoEventHandler::changeHandlerFD(fd_);
+
+  VLOG(11) << "init() successful for async UDP socket!";
 }
 
 void ShenangoAsyncUDPSocket::bind(const folly::SocketAddress& address) {
@@ -64,6 +70,8 @@ void ShenangoAsyncUDPSocket::bind(const folly::SocketAddress& address) {
     errno = ENOTSUP;
     return;
   }
+
+  VLOG(11) << "Calling init() in async UDP socket bind()!";
 
   init();
   netaddr localAddr{};
@@ -141,7 +149,7 @@ ssize_t ShenangoAsyncUDPSocket::writev(
   struct msghdr msg{};
   if (!connected_) {
     msg.msg_name = reinterpret_cast<void*>(&raddr);
-    msg.msg_namelen = address.getActualSize();
+    msg.msg_namelen = sizeof(raddr);
   } else {
     if (connectedAddress_ != address) {
       errno = ENOTSUP;
@@ -316,6 +324,8 @@ void ShenangoAsyncUDPSocket::resumeRead(ReadCallback* cob) {
     cob->onReadError(ex);
     return;
   }
+
+  VLOG(11) << "resumeRead completed";
 }
 
 void ShenangoAsyncUDPSocket::pauseRead() {
@@ -330,6 +340,7 @@ void ShenangoAsyncUDPSocket::handlerReady() noexcept {
 }
 
 void ShenangoAsyncUDPSocket::handleRead() noexcept {
+  VLOG(4) << "handleRead() triggered!";
   void* buf{nullptr};
   size_t len{0};
 
@@ -409,6 +420,8 @@ bool ShenangoAsyncUDPSocket::updateRegistration() noexcept {
   if (readCallback_) {
     flags |= READ;
   }
+
+  VLOG(11) << "Calling registerHandler()!";
 
   return registerHandler(uint16_t(flags | PERSIST));
 }

@@ -8,6 +8,7 @@
 
 #include <folly/ScopeGuard.h>
 #include <folly/net/detail/SocketFileDescriptorMap.h>
+#include <glog/logging.h>
 
 #include "net.h"
 
@@ -117,6 +118,7 @@ ssize_t send(ShNetworkSocket s, const void* buf, size_t len, int flags) {
 }
 
 ssize_t sendmsg(ShNetworkSocket socket, const msghdr* message, int flags) {
+  VLOG(4) << "Sending message!";
   rt::UdpConn* sock = socket.data;
   ssize_t bytesSent = 0;
   for (size_t i = 0; i < message->msg_iovlen; i++) {
@@ -140,6 +142,7 @@ ssize_t sendmsg(ShNetworkSocket socket, const msghdr* message, int flags) {
     }
     bytesSent += r;
   }
+  VLOG(4) << bytesSent << " bytes sent!";
   return bytesSent;
 }
 
@@ -167,7 +170,9 @@ ShNetworkSocket socket() {
 }
 
 int set_socket_non_blocking(ShNetworkSocket s) {
+  VLOG(11) << "Trying to set ShNetworkSocket to be non-blocking!";
   s.data->SetNonblocking(true);
+  VLOG(11) << "ShNetworkSocket is set to be non-blocking!";
   return 0;
 }
 } // namespace folly

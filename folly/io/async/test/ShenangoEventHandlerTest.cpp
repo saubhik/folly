@@ -9,22 +9,28 @@ extern "C" {
 #include <iostream>
 
 #include <folly/io/async/EventBase.h>
-#include <folly/io/async/ShenangoEventHandler.h>
 #include <folly/io/async/ShenangoAsyncUDPSocket.h>
+#include <folly/io/async/ShenangoEventHandler.h>
+#include <folly/net/ShNetworkSocket.h>
 
 namespace {
 
 netaddr raddr;
 constexpr int port = 8000;
 
+int StringToAddr(const char *str, uint32_t *addr);
+
 class ShenangoEventHandlerMock : public folly::ShenangoEventHandler {
- public:
-  ShenangoEventHandlerMock(folly::EventBase* eb, folly::NetworkSocket fd)
-      : ShenangoEventHandler(eb, sock), fd_(fd) {
+public:
+  ShenangoEventHandlerMock(folly::EventBase *eb, folly::ShNetworkSocket fd)
+      : ShenangoEventHandler(eb, fd), fd_(fd) {
+    netaddr localAddr{0, port};
+    StringToAddr("10.10.1.4", &localAddr.ip);
     fd_.data->SetNonblocking(true);
+    fd_.data->Bind(&localAddr);
   };
 
- private:
+private:
   void handlerReady() noexcept override {
     int rcv;
 
@@ -39,43 +45,26 @@ class ShenangoEventHandlerMock : public folly::ShenangoEventHandler {
     }
   }
 
-  folly::NetworkSocket fd_;
+  folly::ShNetworkSocket fd_;
 };
 
-void ServerHandler(void* arg) {
-  folly::NetworkSocket fd = folly::netops::socket();
-  fd.data = rt::UdpConn::Listen({0, port})
-
+void ServerHandler(void *arg) {
+  folly::ShNetworkSocket fd;
   folly::EventBase eb;
+
+  fd = folly::shnetops::socket();
   ShenangoEventHandlerMock eh(&eb, fd);
 
-  eh.registerHandler(
-      folly::ShenangoEventHandler::READ | folly::ShenangoEventHandler::PERSIST);
+  eh.registerHandler(folly::ShenangoEventHandler::READ |
+                     folly::ShenangoEventHandler::PERSIST);
 
-  log_info("Press return after client is finished");
-  getchar();
-
-  eb.loop();
-
-  sock->Shutdown();
+  eb.loopForever();
 }
 
-void FollyClientHandler(void* arg) {
-  folly::SocketAddress server_;
-  std::unique_ptr<folly::ShenangoAsyncUDPSocket> socket_;
-
-  for (int i = 0; i < 10; ++i) {
-    auto ret = socket_->write(server_, folly::IOBuf::copyBuffer(
-        folly::to<std::string>("PING ", i)));
-    if (ret == -1) { panic("write failed!"); }
-  }
-
-  socket_->close();
-}
-
-void ClientHandler(void* arg) {
-  rt::UdpConn* sock = rt::UdpConn::Dial({0, 0}, raddr);
-  if (unlikely(sock == nullptr)) panic("couldn't connect to raddr!");
+void ClientHandler(void *arg) {
+  rt::UdpConn *sock = rt::UdpConn::Dial({0, 0}, raddr);
+  if (unlikely(sock == nullptr))
+    panic("couldn't connect to raddr!");
 
   int snd = 100;
   for (int i = 0; i < 10; ++i) {
@@ -91,7 +80,7 @@ void ClientHandler(void* arg) {
   sock->Shutdown();
 }
 
-int StringToAddr(const char* str, uint32_t* addr) {
+int StringToAddr(const char *str, uint32_t *addr) {
   uint8_t a, b, c, d;
   if (sscanf(str, "%hhu.%hhu.%hhu.%hhu", &a, &b, &c, &d) != 4)
     return -EINVAL;
@@ -101,7 +90,7 @@ int StringToAddr(const char* str, uint32_t* addr) {
 }
 } // anonymous namespace
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
   int ret;
 
   if (argc < 3) {
@@ -111,7 +100,7 @@ int main(int argc, char* argv[]) {
 
   std::string cmd = argv[2];
   if (cmd == "server") {
-    ret = runtime_init(argv[1], ServerHandler, NULL);
+    ret = runtime_init(argv[1], ServerHandler, nullptr);
     if (ret) {
       printf("failed to start runtime\n");
       return ret;
@@ -131,7 +120,7 @@ int main(int argc, char* argv[]) {
     return -EINVAL;
   raddr.port = port;
 
-  ret = runtime_init(argv[1], ClientHandler, NULL);
+  ret = runtime_init(argv[1], ClientHandler, nullptr);
   if (ret) {
     printf("failed to start runtime\n");
     return ret;

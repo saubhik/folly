@@ -146,8 +146,8 @@ list(APPEND FOLLY_LINK_LIBRARIES ${LIBSODIUM_LIBRARIES})
 list(APPEND FOLLY_INCLUDE_DIRECTORIES ${LIBSODIUM_INCLUDE_DIRS})
 
 # add shenango headers
-list(APPEND FOLLY_INCLUDE_DIRECTORIES /proj/quic-server-PG0/users/saubhik/caladan/inc)
-list(APPEND FOLLY_INCLUDE_DIRECTORIES /proj/quic-server-PG0/users/saubhik/caladan/bindings/cc)
+list(APPEND FOLLY_INCLUDE_DIRECTORIES "/proj/quic-server-PG0/users/saubhik/caladan/inc")
+list(APPEND FOLLY_INCLUDE_DIRECTORIES "/proj/quic-server-PG0/users/saubhik/caladan/bindings/cc")
 
 # link shenango libraries
 list(APPEND FOLLY_LINK_LIBRARIES /proj/quic-server-PG0/users/saubhik/caladan/bindings/cc/librt++.a)
