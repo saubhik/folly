@@ -33,18 +33,35 @@ static int (*recvmmsg)(
 namespace folly::shnetops {
 
 int bind(ShNetworkSocket s, const netaddr* name) {
-  s.data->Bind(name);
+  if (s != ShNetworkSocket()) {
+    close(s);
+  }
+
+  s.localAddr = *name;
+  s.data = rt::UdpConn::Listen(s.localAddr);
+  s.data->SetNonblocking(s.nonBlocking);
+
   return 0;
 }
 
 int close(ShNetworkSocket s) {
-  s.data->Shutdown();
+  if (!s.shutDownCalled) {
+    s.shutDownCalled = true;
+    s.data->Shutdown();
+  }
   return 0;
 }
 
 int connect(ShNetworkSocket s, const netaddr* name) {
-  int r = s.data->Connect(name);
-  return r;
+//  if (s != ShNetworkSocket()) {
+//    close(s);
+//  }
+
+  s.remoteAddr = *name;
+  s.data = rt::UdpConn::Dial(s.localAddr, s.remoteAddr);
+  s.data->SetNonblocking(s.nonBlocking);
+
+  return 0;
 }
 
 ssize_t recv(ShNetworkSocket s, void* buf, size_t len, int flags) {
@@ -58,12 +75,14 @@ ssize_t recvfrom(
     int flags,
     netaddr* from) {
   rt::UdpConn* sock = socket.data;
+  sock->SetNonblocking(socket.nonBlocking);
   return sock->ReadFrom(buf, len, from);
 }
 
 ssize_t recvmsg(ShNetworkSocket socket, msghdr* message, int flags) {
   (void) flags;
   rt::UdpConn* sock = socket.data;
+  sock->SetNonblocking(socket.nonBlocking);
   ssize_t bytesReceived = 0;
   for (size_t i = 0; i < message->msg_iovlen; i++) {
     ssize_t r;
@@ -120,6 +139,7 @@ ssize_t send(ShNetworkSocket s, const void* buf, size_t len, int flags) {
 ssize_t sendmsg(ShNetworkSocket socket, const msghdr* message, int flags) {
   VLOG(4) << "Sending message!";
   rt::UdpConn* sock = socket.data;
+  sock->SetNonblocking(socket.nonBlocking);
   ssize_t bytesSent = 0;
   for (size_t i = 0; i < message->msg_iovlen; i++) {
     ssize_t r;
@@ -166,13 +186,13 @@ int shutdown(ShNetworkSocket s, int how) {
 }
 
 ShNetworkSocket socket() {
-  return ShNetworkSocket(new rt::UdpConn());
+  netaddr localAddr{0, 0};
+  rt::UdpConn* sock = rt::UdpConn::Listen(localAddr);
+  return ShNetworkSocket(sock);
 }
 
 int set_socket_non_blocking(ShNetworkSocket s) {
-  VLOG(11) << "Trying to set ShNetworkSocket to be non-blocking!";
-  s.data->SetNonblocking(true);
-  VLOG(11) << "ShNetworkSocket is set to be non-blocking!";
+  s.nonBlocking = true;
   return 0;
 }
 } // namespace folly

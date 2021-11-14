@@ -27,7 +27,7 @@ public:
     netaddr localAddr{0, port};
     StringToAddr("10.10.1.4", &localAddr.ip);
     fd_.data->SetNonblocking(true);
-    fd_.data->Bind(&localAddr);
+    fd_.data->Listen(localAddr);
   };
 
 private:
