@@ -181,6 +181,9 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
     ioBufFreeFunc_ = std::move(ioBufFreeFunc);
   }
 
+  // TODO: Make this private before commit!
+  ShNetworkSocket fd_;
+
  protected:
   struct full_netaddr {
     netaddr addr;
@@ -233,7 +236,6 @@ class ShenangoAsyncUDPSocket : public ShenangoEventHandler {
   EventBase* eventBase_;
   folly::SocketAddress localAddress_;
 
-  ShNetworkSocket fd_;
   FDOwnership ownership_;
 
   // Temp space to receive client address

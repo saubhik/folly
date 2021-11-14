@@ -191,6 +191,10 @@ public:
       LOG(FATAL) << ex.what();
     }
 
+    int snd = 100;
+    socket_->fd_.data->WriteTo(&snd, sizeof(snd), &raddr);
+    log_info("Wrote integer 100 to UDP socket!");
+
     socket_->resumeRead(this);
 
     n_ = n;
