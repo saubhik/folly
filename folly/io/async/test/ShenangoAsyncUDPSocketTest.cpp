@@ -191,10 +191,6 @@ public:
       LOG(FATAL) << ex.what();
     }
 
-    int snd = 100;
-    socket_->fd_.data->WriteTo(&snd, sizeof(snd), &raddr);
-    log_info("Wrote integer 100 to UDP socket!");
-
     socket_->resumeRead(this);
 
     n_ = n;
@@ -595,7 +591,7 @@ void ClientHandler(void *arg) {
   cevb.waitUntilRunning();
 
   // Send ping
-  cevb.runInEventBaseThread([&]() { client->start(writeAddress, 100); });
+  cevb.runInEventBaseThread([&]() { client->start(writeAddress, 1); });
 
   // Wait for client to finish
   clientThread.Join();

@@ -21,7 +21,6 @@ struct ShNetworkSocket {
   netaddr localAddr{0, 0};
   netaddr remoteAddr{0, 0};
   bool nonBlocking{false};
-  bool shutDownCalled{false};
 
   constexpr ShNetworkSocket() : data(invalid_handle_value) {}
   constexpr explicit ShNetworkSocket(native_handle_type d) : data(d) {}

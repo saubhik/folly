@@ -24,10 +24,9 @@ class ShenangoEventHandlerMock : public folly::ShenangoEventHandler {
 public:
   ShenangoEventHandlerMock(folly::EventBase *eb, folly::ShNetworkSocket fd)
       : ShenangoEventHandler(eb, fd), fd_(fd) {
-    netaddr localAddr{0, port};
-    StringToAddr("10.10.1.4", &localAddr.ip);
-    fd_.data->SetNonblocking(true);
-    fd_.data->Listen(localAddr);
+    netaddr localAddress{0, port};
+    folly::shnetops::set_socket_non_blocking(fd_);
+    folly::shnetops::bind(fd_, &localAddress);
   };
 
 private:
@@ -37,7 +36,8 @@ private:
     // Make sure to drain the queue as a callback might be executed
     // after multiple triggers.
     while (true) {
-      ssize_t ret = fd_.data->ReadFrom(&rcv, sizeof(rcv), &raddr);
+      ssize_t ret =
+          folly::shnetops::recvfrom(fd_, &rcv, sizeof(rcv), 0, &raddr);
       if (ret != static_cast<ssize_t>(sizeof(rcv))) {
         return;
       }
@@ -68,6 +68,7 @@ void ClientHandler(void *arg) {
 
   int snd = 100;
   for (int i = 0; i < 10; ++i) {
+    log_info("Sending integer = %d ...", snd);
     ssize_t ret = sock->Write(&snd, sizeof(snd));
     if (ret != static_cast<ssize_t>(sizeof(snd))) {
       panic("write failed, ret = %ld", ret);
