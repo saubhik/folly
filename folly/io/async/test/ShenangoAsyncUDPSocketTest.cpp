@@ -36,8 +36,8 @@ constexpr int port = 8000;
 
 class UDPAcceptor : public ShenangoAsyncUDPServerSocket::Callback {
 public:
-  UDPAcceptor(EventBase *evb, int n, folly::SocketAddress serverAddress)
-      : evb_(evb), n_(n), serverAddress_(std::move(serverAddress)) {}
+  UDPAcceptor(EventBase *evb, int n)
+      : evb_(evb), n_(n) {}
 
   void onListenStarted() noexcept override {}
 
@@ -62,7 +62,7 @@ public:
   void sendPong() noexcept {
     try {
       auto writeSocket = std::make_shared<folly::ShenangoAsyncUDPSocket>(evb_);
-      writeSocket->bind(serverAddress_);
+      writeSocket->connect(lastClient_);
       writeSocket->write(lastClient_, folly::IOBuf::copyBuffer(lastMsg_));
     } catch (const std::exception &ex) {
       VLOG(4) << "Failed to send PONG " << ex.what();
@@ -73,7 +73,6 @@ private:
   EventBase *const evb_{nullptr};
   const int n_{-1};
 
-  folly::SocketAddress serverAddress_;
   folly::SocketAddress lastClient_;
   std::string lastMsg_;
 };
@@ -104,7 +103,7 @@ public:
     // Add numWorkers thread
     int i = 0;
     for (auto &evb : evbs_) {
-      acceptors_.emplace_back(&evb, i, socket_->address());
+      acceptors_.emplace_back(&evb, i);
 
       rt::Thread t([&]() {
         log_info("I am in worker event loop thread!");
@@ -175,12 +174,9 @@ public:
     server_ = server;
     socket_ = std::make_unique<ShenangoAsyncUDPSocket>(evb_);
 
-    // TODO: Fix this.
-    connectAddr_ = server_;
-
     try {
       if (bindSocket_ == BindSocket::YES) {
-        socket_->bind(folly::SocketAddress("10.10.1.2", 0));
+        socket_->bind(folly::SocketAddress("10.10.1.2", port));
       }
       if (connectAddr_) {
         socket_->connect(*connectAddr_);
@@ -580,7 +576,7 @@ void ClientHandler(void *arg) {
   folly::EventBase cevb;
 
   folly::SocketAddress writeAddress =
-      folly::SocketAddress(rt::NetaddrToIPString(raddr), raddr.port);
+      folly::SocketAddress("10.10.1.4", raddr.port);
 
   auto client = std::make_unique<UDPClient>(&cevb);
 
@@ -591,7 +587,7 @@ void ClientHandler(void *arg) {
   cevb.waitUntilRunning();
 
   // Send ping
-  cevb.runInEventBaseThread([&]() { client->start(writeAddress, 1); });
+  cevb.runInEventBaseThread([&]() { client->start(writeAddress, 100); });
 
   // Wait for client to finish
   clientThread.Join();

@@ -38,7 +38,9 @@ bool ShenangoEventHandler::registerImpl(uint16_t events) {
   // if the I/O event flags haven't changed.  Using a separate event struct is
   // therefore slightly more efficient in this case (although it does take up
   // more space).
-  event_.eb_event_add(nullptr);
+  if (!event_.isEventRegistered()) {
+    event_.eb_event_add(nullptr);
+  }
 
   return true;
 }
