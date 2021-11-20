@@ -9,28 +9,35 @@ extern "C" {
 #include <iostream>
 
 #include <folly/io/async/EventBase.h>
+#include <folly/io/async/ShenangoAsyncUDPSocket.h>
 #include <folly/io/async/ShenangoEventHandler.h>
+#include <folly/net/ShNetworkSocket.h>
 
 namespace {
 
 netaddr raddr;
 constexpr int port = 8000;
 
+int StringToAddr(const char *str, uint32_t *addr);
+
 class ShenangoEventHandlerMock : public folly::ShenangoEventHandler {
- public:
-  ShenangoEventHandlerMock(folly::EventBase* eb, rt::UdpConn* sock)
-      : ShenangoEventHandler(eb, sock), sock_(sock) {
-    sock_->SetNonblocking(true);
+public:
+  ShenangoEventHandlerMock(folly::EventBase *eb, folly::ShNetworkSocket fd)
+      : ShenangoEventHandler(eb, fd), fd_(fd) {
+    netaddr localAddress{0, port};
+    folly::shnetops::set_socket_non_blocking(fd_);
+    folly::shnetops::bind(fd_, &localAddress);
   };
 
- private:
+private:
   void handlerReady() noexcept override {
     int rcv;
 
     // Make sure to drain the queue as a callback might be executed
     // after multiple triggers.
     while (true) {
-      ssize_t ret = sock_->ReadFrom(&rcv, sizeof(rcv), &raddr);
+      ssize_t ret =
+          folly::shnetops::recvfrom(fd_, &rcv, sizeof(rcv), 0, &raddr);
       if (ret != static_cast<ssize_t>(sizeof(rcv))) {
         return;
       }
@@ -38,33 +45,30 @@ class ShenangoEventHandlerMock : public folly::ShenangoEventHandler {
     }
   }
 
-  rt::UdpConn* sock_;
+  folly::ShNetworkSocket fd_;
 };
 
-void ServerHandler(void* arg) {
-  rt::UdpConn* sock = rt::UdpConn::Listen({0, port});
-  if (!sock) panic("couldn't listen for connections");
-
+void ServerHandler(void *arg) {
+  folly::ShNetworkSocket fd;
   folly::EventBase eb;
-  ShenangoEventHandlerMock eh(&eb, sock);
 
-  eh.registerHandler(
-      folly::ShenangoEventHandler::READ | folly::ShenangoEventHandler::PERSIST);
+  fd = folly::shnetops::socket();
+  ShenangoEventHandlerMock eh(&eb, fd);
 
-  log_info("Press return after client is finished");
-  getchar();
+  eh.registerHandler(folly::ShenangoEventHandler::READ |
+                     folly::ShenangoEventHandler::PERSIST);
 
-  eb.loop();
-
-  sock->Shutdown();
+  eb.loopForever();
 }
 
-void ClientHandler(void* arg) {
-  rt::UdpConn* sock = rt::UdpConn::Dial({0, 0}, raddr);
-  if (unlikely(sock == nullptr)) panic("couldn't connect to raddr!");
+void ClientHandler(void *arg) {
+  rt::UdpConn *sock = rt::UdpConn::Dial({0, 0}, raddr);
+  if (unlikely(sock == nullptr))
+    panic("couldn't connect to raddr!");
 
   int snd = 100;
   for (int i = 0; i < 10; ++i) {
+    log_info("Sending integer = %d ...", snd);
     ssize_t ret = sock->Write(&snd, sizeof(snd));
     if (ret != static_cast<ssize_t>(sizeof(snd))) {
       panic("write failed, ret = %ld", ret);
@@ -77,7 +81,7 @@ void ClientHandler(void* arg) {
   sock->Shutdown();
 }
 
-int StringToAddr(const char* str, uint32_t* addr) {
+int StringToAddr(const char *str, uint32_t *addr) {
   uint8_t a, b, c, d;
   if (sscanf(str, "%hhu.%hhu.%hhu.%hhu", &a, &b, &c, &d) != 4)
     return -EINVAL;
@@ -87,7 +91,7 @@ int StringToAddr(const char* str, uint32_t* addr) {
 }
 } // anonymous namespace
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
   int ret;
 
   if (argc < 3) {
@@ -97,7 +101,7 @@ int main(int argc, char* argv[]) {
 
   std::string cmd = argv[2];
   if (cmd == "server") {
-    ret = runtime_init(argv[1], ServerHandler, NULL);
+    ret = runtime_init(argv[1], ServerHandler, nullptr);
     if (ret) {
       printf("failed to start runtime\n");
       return ret;
@@ -117,7 +121,7 @@ int main(int argc, char* argv[]) {
     return -EINVAL;
   raddr.port = port;
 
-  ret = runtime_init(argv[1], ClientHandler, NULL);
+  ret = runtime_init(argv[1], ClientHandler, nullptr);
   if (ret) {
     printf("failed to start runtime\n");
     return ret;
