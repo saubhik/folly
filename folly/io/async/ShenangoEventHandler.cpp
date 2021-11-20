@@ -21,6 +21,13 @@ bool ShenangoEventHandler::registerImpl(uint16_t events) {
   // as shenango does not use flags for now.
   assert(event_.eb_ev_base() != nullptr);
 
+  if (events == uint16_t(NONE)) {
+    if (isHandlerRegistered()) {
+      event_.eb_event_del();
+    }
+    return true;
+  }
+
   // Add the event.
   //
   // Although libevent allows events to wait on both I/O and a timeout,

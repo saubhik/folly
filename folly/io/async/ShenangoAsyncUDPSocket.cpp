@@ -395,11 +395,12 @@ bool ShenangoAsyncUDPSocket::updateRegistration() noexcept {
 
   VLOG(11) << "Calling registerHandler()!";
 
-  return registerHandler(uint16_t(flags | PERSIST));
+  return registerHandler(uint16_t(flags));
 }
 
 void ShenangoAsyncUDPSocket::detachEventBase() {
   DCHECK(eventBase_ && eventBase_->isInEventBaseThread());
+  registerHandler(uint16_t(NONE));
   eventBase_ = nullptr;
   ShenangoEventHandler::detachEventBase();
 }
@@ -409,6 +410,7 @@ void ShenangoAsyncUDPSocket::attachEventBase(folly::EventBase *evb) {
   DCHECK(evb && evb->isInEventBaseThread());
   eventBase_ = evb;
   ShenangoEventHandler::attachEventBase(evb);
+  updateRegistration();
 }
 
 void ShenangoAsyncUDPSocket::close() {

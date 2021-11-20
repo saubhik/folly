@@ -60,9 +60,8 @@ ssize_t recvmsg(ShNetworkSocket &socket, msghdr *message, int flags) {
       r = sock->Read((void *)message->msg_iov[i].iov_base,
                      (size_t)message->msg_iov[i].iov_len);
     }
-    if (r == -1 || size_t(r) != message->msg_iov[i].iov_len) {
+    if (r == -1) {
       // Some error happened
-      // TODO: Handle Error?
       return -1;
     }
     bytesReceived += r;
