@@ -550,7 +550,7 @@ int StringToAddr(const char* str, uint32_t* addr) {
   return 0;
 }
 
-#if 1
+#if 0
 int main(int argc, char* argv[]) {
   int ret;
 
@@ -648,7 +648,7 @@ int main(int argc, char* argv[]) {
 //   ASSERT_GT(pingClient->pongRecvd(), 0);
 // }
 
-# if 0
+# if 1
 class MockUDPReadCallback : public AsyncUDPSocket::ReadCallback {
  public:
   ~MockUDPReadCallback() override = default;

@@ -15,6 +15,13 @@
 
 namespace folly {
 
+void AsyncUDPSocket::fromMsg(
+    FOLLY_MAYBE_UNUSED ReadCallback::OnDataAvailableParams& params,
+    FOLLY_MAYBE_UNUSED struct msghdr& msg) {
+  // No support yet.
+}
+
+
 AsyncUDPSocket::AsyncUDPSocket(EventBase* evb)
     : ShenangoEventHandler(CHECK_NOTNULL(evb)), readCallback_(nullptr),
       eventBase_(evb), fd_() {
@@ -59,7 +66,8 @@ void AsyncUDPSocket::init() {
   VLOG(11) << "init() successful for async UDP socket!";
 }
 
-void AsyncUDPSocket::bind(const folly::SocketAddress& address) {
+void AsyncUDPSocket::bind(const folly::SocketAddress& address,
+                          BindOptions bindOptions) {
   // Do not support UNIX sockets.
   if (address.getFamily() == AF_UNIX) {
     errno = ENOTSUP;
@@ -106,6 +114,121 @@ void AsyncUDPSocket::connect(const folly::SocketAddress& address) {
     localAddress_ =
         folly::SocketAddress(rt::NetaddrToIPString(localAddr), localAddr.port);
   }
+}
+
+void AsyncUDPSocket::dontFragment(bool df) {
+  // This does nothing as of now.
+  int optname4 = 0;
+  int optval4 = df ? 0 : 0;
+  int optname6 = 0;
+  int optval6 = df ? 0 : 0;
+#if defined(IP_MTU_DISCOVER) && defined(IP_PMTUDISC_DO) && \
+    defined(IP_PMTUDISC_WANT)
+  optname4 = IP_MTU_DISCOVER;
+  optval4 = df ? IP_PMTUDISC_DO : IP_PMTUDISC_WANT;
+#endif
+#if defined(IPV6_MTU_DISCOVER) && defined(IPV6_PMTUDISC_DO) && \
+    defined(IPV6_PMTUDISC_WANT)
+  optname6 = IPV6_MTU_DISCOVER;
+  optval6 = df ? IPV6_PMTUDISC_DO : IPV6_PMTUDISC_WANT;
+#endif
+//  if (optname4 && optval4 && address().getFamily() == AF_INET) {
+//    if (netops::setsockopt(
+//        fd_, IPPROTO_IP, optname4, &optval4, sizeof(optval4))) {
+//      throw AsyncSocketException(
+//          AsyncSocketException::NOT_OPEN,
+//          "Failed to set DF with IP_MTU_DISCOVER",
+//          errno);
+//    }
+//  }
+//  if (optname6 && optval6 && address().getFamily() == AF_INET6) {
+//    if (netops::setsockopt(
+//        fd_, IPPROTO_IPV6, optname6, &optval6, sizeof(optval6))) {
+//      throw AsyncSocketException(
+//          AsyncSocketException::NOT_OPEN,
+//          "Failed to set DF with IPV6_MTU_DISCOVER",
+//          errno);
+//    }
+//  }
+}
+
+void AsyncUDPSocket::setDFAndTurnOffPMTU() {
+  // This does nothing as of now.
+  int optname4 = 0;
+  int optval4 = 0;
+  int optname6 = 0;
+  int optval6 = 0;
+#if defined(IP_MTU_DISCOVER) && defined(IP_PMTUDISC_PROBE)
+  optname4 = IP_MTU_DISCOVER;
+  optval4 = IP_PMTUDISC_PROBE;
+#endif
+#if defined(IPV6_MTU_DISCOVER) && defined(IPV6_PMTUDISC_PROBE)
+  optname6 = IPV6_MTU_DISCOVER;
+  optval6 = IPV6_PMTUDISC_PROBE;
+#endif
+//  if (optname4 && optval4 && address().getFamily() == AF_INET) {
+//    if (folly::netops::setsockopt(
+//        fd_, IPPROTO_IP, optname4, &optval4, sizeof(optval4))) {
+//      throw AsyncSocketException(
+//          AsyncSocketException::NOT_OPEN,
+//          "Failed to set PMTUDISC_PROBE with IP_MTU_DISCOVER",
+//          errno);
+//    }
+//  }
+//  if (optname6 && optval6 && address().getFamily() == AF_INET6) {
+//    if (folly::netops::setsockopt(
+//        fd_, IPPROTO_IPV6, optname6, &optval6, sizeof(optval6))) {
+//      throw AsyncSocketException(
+//          AsyncSocketException::NOT_OPEN,
+//          "Failed to set PMTUDISC_PROBE with IPV6_MTU_DISCOVER",
+//          errno);
+//    }
+//  }
+}
+
+void AsyncUDPSocket::setErrMessageCallback(
+    ErrMessageCallback* errMessageCallback) {
+  // This does nothing as of now.
+  int optname4 = 0;
+  int optname6 = 0;
+#if defined(IP_RECVERR)
+  optname4 = IP_RECVERR;
+#endif
+#if defined(IPV6_RECVERR)
+  optname6 = IPV6_RECVERR;
+#endif
+  errMessageCallback_ = errMessageCallback;
+  int err = (errMessageCallback_ != nullptr);
+//  if (optname4 && address().getFamily() == AF_INET &&
+//      netops::setsockopt(fd_, IPPROTO_IP, optname4, &err, sizeof(err))) {
+//    throw AsyncSocketException(
+//        AsyncSocketException::NOT_OPEN, "Failed to set IP_RECVERR", errno);
+//  }
+//  if (optname6 && address().getFamily() == AF_INET6 &&
+//      netops::setsockopt(fd_, IPPROTO_IPV6, optname6, &err, sizeof(err))) {
+//    throw AsyncSocketException(
+//        AsyncSocketException::NOT_OPEN, "Failed to set IPV6_RECVERR", errno);
+//  }
+}
+
+ssize_t AsyncUDPSocket::writeGSO(
+    const folly::SocketAddress& address,
+    const std::unique_ptr<folly::IOBuf>& buf,
+    int gso) {
+  // UDP's typical MTU size is 1500, so high number of buffers
+  //   really do not make sense. Optimize for buffer chains with
+  //   buffers less than 16, which is the highest I can think of
+  //   for a real use case.
+  iovec vec[16];
+  size_t iovec_len = buf->fillIov(vec, sizeof(vec) / sizeof(vec[0])).numIovecs;
+  if (UNLIKELY(iovec_len == 0)) {
+    buf->coalesce();
+    vec[0].iov_base = const_cast<uint8_t*>(buf->data());
+    vec[0].iov_len = buf->length();
+    iovec_len = 1;
+  }
+
+  return writev(address, vec, iovec_len);
 }
 
 void AsyncUDPSocket::setFD(ShNetworkSocket fd, FDOwnership ownership) {
@@ -158,6 +281,14 @@ ssize_t AsyncUDPSocket::writev(const folly::SocketAddress& address,
   msg.msg_flags = 0;
 
   return sendmsg(fd_, &msg, 0);
+}
+
+int AsyncUDPSocket::writemGSO(
+    Range<SocketAddress const*> addrs,
+    const std::unique_ptr<folly::IOBuf>* bufs,
+    size_t count,
+    const int* gso) {
+  return writem(addrs, bufs, count);
 }
 
 int AsyncUDPSocket::writem(Range<SocketAddress const*> addrs,
@@ -396,6 +527,51 @@ bool AsyncUDPSocket::updateRegistration() noexcept {
   VLOG(11) << "Calling registerHandler()!";
 
   return registerHandler(uint16_t(flags));
+}
+
+bool AsyncUDPSocket::setGSO(int val) {
+  // No support yet.
+  return false;
+}
+
+int AsyncUDPSocket::getGSO() {
+  // No support yet.
+  return -1;
+}
+
+bool AsyncUDPSocket::setGRO(bool bVal) {
+  // No support yet.
+  return false;
+}
+
+// packet timestamping
+int AsyncUDPSocket::getTimestamping() {
+  // No support yet.
+  ts_ = -1;
+  return ts_.value();
+}
+
+bool AsyncUDPSocket::setTimestamping(int val) {
+  // No support yet.
+  return false;
+}
+
+int AsyncUDPSocket::getGRO() {
+  // No support yet.
+  return -1;
+}
+
+void AsyncUDPSocket::applyOptions(
+    const SocketOptionMap& options, SocketOptionKey::ApplyPos pos) {
+  VLOG(11) << "Using not implemented AsyncUDPSocket::applyOptions()!";
+  // auto result = applySocketOptions(fd_, options, pos);
+  auto result = 0;
+  if (result != 0) {
+    throw AsyncSocketException(
+        AsyncSocketException::INTERNAL_ERROR,
+        "failed to set socket option",
+        result);
+  }
 }
 
 void AsyncUDPSocket::detachEventBase() {

@@ -10,6 +10,7 @@
 #include <folly/io/async/ShenangoEventHandler.h>
 #include <folly/net/ShNetOps.h>
 #include <folly/net/ShNetworkSocket.h>
+#include <folly/io/SocketOptionMap.h>
 
 namespace folly {
 
@@ -22,10 +23,12 @@ class AsyncUDPSocket : public ShenangoEventHandler {
   class ReadCallback {
    public:
     struct OnDataAvailableParams {
-      // int gro = -1;
+      int gro = -1;
       // RX timestamp if available
       using Timestamp = std::array<struct timespec, 3>;
       folly::Optional<Timestamp> ts;
+      static constexpr size_t kCmsgSpace =
+          CMSG_SPACE(sizeof(uint16_t)) + CMSG_SPACE(sizeof(Timestamp));
     };
 
     /**
@@ -81,6 +84,33 @@ class AsyncUDPSocket : public ShenangoEventHandler {
     virtual ~ReadCallback() = default;
   };
 
+  class ErrMessageCallback {
+   public:
+    virtual ~ErrMessageCallback() = default;
+
+    /**
+     * errMessage() will be invoked when kernel puts a message to
+     * the error queue associated with the socket.
+     *
+     * @param cmsg      Reference to cmsghdr structure describing
+     *                  a message read from error queue associated
+     *                  with the socket.
+     */
+    virtual void errMessage(const cmsghdr& cmsg) noexcept = 0;
+
+    /**
+     * errMessageError() will be invoked if an error occurs reading a message
+     * from the socket error stream.
+     *
+     * @param ex        An exception describing the error that occurred.
+     */
+    virtual void errMessageError(const AsyncSocketException& ex) noexcept = 0;
+  };
+
+  static void fromMsg(
+      FOLLY_MAYBE_UNUSED ReadCallback::OnDataAvailableParams& params,
+      FOLLY_MAYBE_UNUSED struct msghdr& msg);
+
   using IOBufFreeFunc = folly::Function<void(std::unique_ptr<folly::IOBuf>&&)>;
 
   /**
@@ -96,7 +126,18 @@ class AsyncUDPSocket : public ShenangoEventHandler {
     return localAddress_;
   }
 
-  virtual void bind(const folly::SocketAddress& address);
+  /**
+   * Contains options to pass to bind.
+   */
+  struct BindOptions {
+    constexpr BindOptions() noexcept {}
+
+    // Whether IPV6_ONLY should be set on the socket.
+    bool bindV6Only{true};
+  };
+
+  virtual void bind(const folly::SocketAddress& address,
+                    BindOptions options = BindOptions());
 
   virtual void connect(const folly::SocketAddress& address);
 
@@ -122,8 +163,37 @@ class AsyncUDPSocket : public ShenangoEventHandler {
   virtual int writem(Range<SocketAddress const*> addrs,
                      const std::unique_ptr<folly::IOBuf>* bufs, size_t count);
 
+  /**
+   * Send the data in buffer to destination. Returns the return code from
+   * ::sendmsg.
+   *  gso is the generic segmentation offload value
+   *  writeGSO will return -1 if
+   *  buf->computeChainDataLength() <= gso
+   *  Before calling writeGSO with a positive value
+   *  verify GSO is supported on this platform by calling getGSO
+   */
+  virtual ssize_t writeGSO(
+      const folly::SocketAddress& address,
+      const std::unique_ptr<folly::IOBuf>& buf,
+      int gso);
+
   virtual ssize_t writeChain(const folly::SocketAddress& address,
                              std::unique_ptr<folly::IOBuf>&& buf);
+
+  /**
+   * Send the data in buffers to destination. Returns the return code from
+   * ::sendmmsg.
+   * bufs is an array of std::unique_ptr<folly::IOBuf>
+   * of size num
+   * gso is an array with the generic segmentation offload values or nullptr
+   *  Before calling writeGSO with a positive value
+   *  verify GSO is supported on this platform by calling getGSO
+   */
+  virtual int writemGSO(
+      Range<SocketAddress const*> addrs,
+      const std::unique_ptr<folly::IOBuf>* bufs,
+      size_t count,
+      const int* gso);
 
   virtual ssize_t writev(const folly::SocketAddress& address,
                          const struct iovec* vec, size_t iovec_len);
@@ -156,7 +226,44 @@ class AsyncUDPSocket : public ShenangoEventHandler {
     return fd_;
   }
 
+  /**
+   * Set reuse port mode to call bind() on the same address multiple times
+   */
+  virtual void setReusePort(bool reusePort) { reusePort_ = reusePort; }
+
+  /**
+   * Set SO_REUSEADDR flag on the socket. Default is OFF.
+   */
+  virtual void setReuseAddr(bool reuseAddr) { reuseAddr_ = reuseAddr; }
+
   EventBase* getEventBase() const { return eventBase_; }
+
+  /**
+   * Enable or disable fragmentation on the socket.
+   *
+   * On Linux, this sets IP(V6)_MTU_DISCOVER to IP(V6)_PMTUDISC_DO when enabled,
+   * and to IP(V6)_PMTUDISC_WANT when disabled. IP(V6)_PMTUDISC_WANT will use
+   * per-route setting to set DF bit. It may be more desirable to use
+   * IP(V6)_PMTUDISC_PROBE as opposed to IP(V6)_PMTUDISC_DO for apps that has
+   * its own PMTU Discovery mechanism.
+   * Note this doesn't work on Apple.
+   */
+  virtual void dontFragment(bool df);
+
+  /**
+   * Set Dont-Fragment (DF) but ignore Path MTU.
+   *
+   * On Linux, this sets  IP(V6)_MTU_DISCOVER to IP(V6)_PMTUDISC_PROBE.
+   * This essentially sets DF but ignores Path MTU for this socket.
+   * This may be desirable for apps that has its own PMTU Discovery mechanism.
+   * See http://man7.org/linux/man-pages/man7/ip.7.html for more info.
+   */
+  virtual void setDFAndTurnOffPMTU();
+
+  /**
+   * Callback for receiving errors on the UDP sockets
+   */
+  virtual void setErrMessageCallback(ErrMessageCallback* errMessageCallback);
 
   virtual bool isBound() const { return fd_ != ShNetworkSocket(); }
 
@@ -166,9 +273,29 @@ class AsyncUDPSocket : public ShenangoEventHandler {
 
   void attachEventBase(folly::EventBase* evb) override;
 
+  // generic segmentation offload get/set
+  // negative return value means GSO is not available
+  virtual int getGSO();
+
+  bool setGSO(int val);
+
+  // generic receive offload get/set
+  // negative return value means GRO is not available
+  int getGRO();
+
+  bool setGRO(bool bVal);
+
+  // packet timestamping
+  int getTimestamping();
+
+  bool setTimestamping(int val);
+
   void setIOBufFreeFunc(IOBufFreeFunc&& ioBufFreeFunc) {
     ioBufFreeFunc_ = std::move(ioBufFreeFunc);
   }
+
+  void applyOptions(
+      const SocketOptionMap& options, SocketOptionKey::ApplyPos pos);
 
  protected:
   struct full_netaddr {
@@ -228,12 +355,18 @@ class AsyncUDPSocket : public ShenangoEventHandler {
   folly::SocketAddress connectedAddress_;
   bool connected_{false};
 
+  // These are dummies. Shenango doesn't support this yet.
+  bool reuseAddr_{false};
+  bool reusePort_{false};
+
   // TODO: Use udp_set_buffers()?
   // int rcvBuf_{0};
   // int sndBuf_{0};
 
   // packet timestamping
   folly::Optional<int> ts_;
+
+  ErrMessageCallback* errMessageCallback_{nullptr};
 
   IOBufFreeFunc ioBufFreeFunc_;
 };
