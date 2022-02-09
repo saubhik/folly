@@ -216,9 +216,9 @@ ssize_t AsyncUDPSocket::writeGSO(
     const std::unique_ptr<folly::IOBuf>& buf,
     int gso) {
   // UDP's typical MTU size is 1500, so high number of buffers
-  //   really do not make sense. Optimize for buffer chains with
-  //   buffers less than 16, which is the highest I can think of
-  //   for a real use case.
+  // really do not make sense. Optimize for buffer chains with
+  // buffers less than 16, which is the highest I can think of
+  // for a real use case.
   iovec vec[16];
   size_t iovec_len = buf->fillIov(vec, sizeof(vec) / sizeof(vec[0])).numIovecs;
   if (UNLIKELY(iovec_len == 0)) {
@@ -530,13 +530,13 @@ bool AsyncUDPSocket::updateRegistration() noexcept {
 }
 
 bool AsyncUDPSocket::setGSO(int val) {
-  // No support yet.
-  return false;
+  // Shenango always supports GSO.
+  return true;
 }
 
 int AsyncUDPSocket::getGSO() {
-  // No support yet.
-  return -1;
+  // Shenango always supports GSO.
+  return 1;
 }
 
 bool AsyncUDPSocket::setGRO(bool bVal) {

@@ -11,7 +11,8 @@ int bind(ShNetworkSocket& s, const netaddr* name) {
 
   s.localAddr = *name;
   rt::UdpConn* sock = rt::UdpConn::Listen(s.localAddr);
-  sock->SetNonblocking(s.nonBlocking);
+  // sock->SetNonblocking(s.nonBlocking);
+  sock->SetNonblocking(true);
   s.data = sock;
 
   return 0;
@@ -29,7 +30,8 @@ int connect(ShNetworkSocket& s, const netaddr* name) {
 
   s.remoteAddr = *name;
   s.data = rt::UdpConn::Dial(s.localAddr, s.remoteAddr);
-  s.data->SetNonblocking(s.nonBlocking);
+  // s.data->SetNonblocking(s.nonBlocking);
+  s.data->SetNonblocking(true);
 
   return 0;
 }
@@ -41,14 +43,16 @@ ssize_t recv(ShNetworkSocket& s, void* buf, size_t len, int flags) {
 ssize_t recvfrom(ShNetworkSocket& socket, void* buf, size_t len, int flags,
                  netaddr* from) {
   rt::UdpConn* sock = socket.data;
-  sock->SetNonblocking(socket.nonBlocking);
+  // sock->SetNonblocking(socket.nonBlocking);
+  sock->SetNonblocking(true);
   return sock->ReadFrom(buf, len, from);
 }
 
 ssize_t recvmsg(ShNetworkSocket& socket, msghdr* message, int flags) {
   (void) flags;
   rt::UdpConn* sock = socket.data;
-  sock->SetNonblocking(socket.nonBlocking);
+  // sock->SetNonblocking(socket.nonBlocking);
+  sock->SetNonblocking(true);
   ssize_t bytesReceived = 0;
   for (size_t i = 0; i < message->msg_iovlen; i++) {
     ssize_t r;
@@ -97,7 +101,8 @@ ssize_t send(ShNetworkSocket& s, const void* buf, size_t len, int flags) {
 ssize_t sendmsg(ShNetworkSocket& socket, const msghdr* message, int flags) {
   VLOG(4) << "Sending message!";
   rt::UdpConn* sock = socket.data;
-  sock->SetNonblocking(socket.nonBlocking);
+  // sock->SetNonblocking(socket.nonBlocking);
+  sock->SetNonblocking(true);
   ssize_t bytesSent = 0;
   for (size_t i = 0; i < message->msg_iovlen; i++) {
     ssize_t r;
@@ -116,8 +121,6 @@ ssize_t sendmsg(ShNetworkSocket& socket, const msghdr* message, int flags) {
     }
     bytesSent += r;
   }
-  VLOG(4) << bytesSent << " bytes sent to "
-          << rt::NetaddrToIPString(*((netaddr*) message->msg_name));
   return bytesSent;
 }
 
@@ -143,6 +146,10 @@ ShNetworkSocket socket() {
 
 int set_socket_non_blocking(ShNetworkSocket& s) {
   s.nonBlocking = true;
+  rt::UdpConn* sock = s.data;
+  if (sock) {
+    sock->SetNonblocking(s.nonBlocking);
+  }
   return 0;
 }
 } // namespace folly::shnetops
