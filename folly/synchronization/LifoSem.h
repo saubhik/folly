@@ -408,7 +408,7 @@ struct LifoSemBase {
     auto h = head_->load(std::memory_order_acquire);
     while (!h.isShutdown()) {
       if (h.isLocked()) {
-        std::this_thread::yield();
+        rt::Yield();
         h = head_->load(std::memory_order_acquire);
         continue;
       }
@@ -424,7 +424,7 @@ struct LifoSemBase {
     // now wake up any waiters
     while (h.isNodeIdx()) {
       if (h.isLocked()) {
-        std::this_thread::yield();
+        rt::Yield();
         h = head_->load(std::memory_order_acquire);
         continue;
       }
@@ -601,7 +601,7 @@ struct LifoSemBase {
     // Try to lock the head.
     while (true) {
       if (head.isLocked()) {
-        std::this_thread::yield();
+        rt::Yield();
         head = head_->load(std::memory_order_acquire);
         continue;
       }
@@ -667,7 +667,7 @@ struct LifoSemBase {
 
       auto head = head_->load(std::memory_order_acquire);
       if (head.isLocked()) {
-        std::this_thread::yield();
+        rt::Yield();
         continue;
       }
       if (head.isNodeIdx()) {
@@ -703,7 +703,7 @@ struct LifoSemBase {
       auto head = head_->load(std::memory_order_acquire);
 
       if (head.isLocked()) {
-        std::this_thread::yield();
+        rt::Yield();
         continue;
       }
 

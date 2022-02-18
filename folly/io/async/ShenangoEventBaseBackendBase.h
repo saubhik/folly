@@ -143,6 +143,8 @@ class ShenangoEventBaseBackendBase {
   using FactoryFunc =
   std::function<std::unique_ptr<folly::EventBaseBackendBase>()>;
 
+  bool hasSocket = false;
+
   ShenangoEventBaseBackendBase() = default;
 
   virtual ~ShenangoEventBaseBackendBase() = default;
@@ -155,6 +157,8 @@ class ShenangoEventBaseBackendBase {
   virtual rt::EventLoop* getEventBase() = 0;
 
   virtual void eb_event_base_loop(int flags) = 0;
+
+  virtual int eb_event_base_loop_w_return(int flags) = 0;
 
   virtual void eb_event_add(Event& event, const struct timeval* timeout) = 0;
 

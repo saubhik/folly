@@ -48,6 +48,7 @@ class ShenangoEventBaseBackend : public folly::ShenangoEventBaseBackendBase {
 
   rt::EventLoop* getEventBase() override { return sevb_; }
   void eb_event_base_loop(int flags) override;
+  int eb_event_base_loop_w_return(int flags) override;
   void eb_event_add(Event& event, const struct timeval* timeout) override;
   void eb_event_del(Event& event) override;
 
@@ -114,6 +115,7 @@ EventBaseBackend::EventBaseBackend() {
 
 ShenangoEventBaseBackend::ShenangoEventBaseBackend() {
   sevb_ = rt::EventLoop::CreateWaiter();
+  hasSocket = false;
 
   if (UNLIKELY(sevb_ == nullptr)) {
     LOG(ERROR) << "EventBase(): Failed to init shenango event base.";
@@ -140,9 +142,25 @@ int EventBaseBackend::eb_event_base_loop(int flags) {
 }
 
 void ShenangoEventBaseBackend::eb_event_base_loop(int flags) {
-  assert(flags & EVLOOP_ONCE);
-  sevb_->LoopCbOnce();
-  VLOG(11) << "ShenangoEventBaseBackend: Executed sevb_->LoopCbOnce()";
+  if (flags & EVLOOP_NONBLOCK) {
+    sevb_->LoopCbOnceNonblock();
+    return;
+  }
+
+  if (flags & EVLOOP_ONCE) {
+    sevb_->LoopCbOnce();
+    return;
+  }
+}
+
+int ShenangoEventBaseBackend::eb_event_base_loop_w_return(int flags) {
+  if (flags & EVLOOP_NONBLOCK) {
+    return sevb_->LoopCbOnceNonblock();
+  }
+
+  if (flags & EVLOOP_ONCE) {
+    return sevb_->LoopCbOnce();
+  }
 }
 
 int EventBaseBackend::eb_event_base_loopbreak() {
@@ -157,6 +175,7 @@ int EventBaseBackend::eb_event_add(
 void ShenangoEventBaseBackend::eb_event_add(
     ShenangoEventBaseBackendBase::Event& event, const struct timeval* timeout) {
   rt::Event::AddEvent(event.getEvent(), timeout);
+  hasSocket = true;
 }
 
 int EventBaseBackend::eb_event_del(EventBaseBackendBase::Event& event) {
@@ -164,6 +183,7 @@ int EventBaseBackend::eb_event_del(EventBaseBackendBase::Event& event) {
 }
 
 void ShenangoEventBaseBackend::eb_event_del(ShenangoEventBaseBackendBase::Event& event) {
+  hasSocket = false;
   return rt::Event::DelEvent(event.getEvent());
 }
 
@@ -345,9 +365,14 @@ static std::chrono::milliseconds getTimeDelta(
   return std::chrono::duration_cast<std::chrono::milliseconds>(result);
 }
 
+static std::chrono::microseconds getTimeDeltaMicro(
+  std::chrono::steady_clock::time_point* prev) {
+  auto result = std::chrono::steady_clock::now() - *prev;
+  return std::chrono::duration_cast<std::chrono::microseconds>(result);
+}
+
 void EventBase::waitUntilRunning() {
   while (loopThread_.load(std::memory_order_acquire) == rt::Thread::Id()) {
-    VLOG(11) << rt::GetId() << " is yielding!";
     rt::Yield();
   }
 }
@@ -430,16 +455,21 @@ bool EventBase::loopBody(int flags, bool ignoreKeepAlive) {
 
     // nobody can add loop callbacks from within this thread if
     // we don't have to handle anything to start with...
-    //    if (blocking && loopCallbacks_.empty()) {
-    //      res = evb_->eb_event_base_loop(EVLOOP_ONCE);
-    //      sevb_->eb_event_base_loop(EVLOOP_ONCE);
-    //    } else {
-    //      res = evb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
-    //      sevb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
-    //    }
-
-    res = evb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
-    sevb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
+     if (blocking && loopCallbacks_.empty() && sevb_->hasSocket) {
+       while (sevb_->eb_event_base_loop_w_return(EVLOOP_ONCE)) {
+         // auto start = std::chrono::steady_clock::now();
+         res = evb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
+         // VLOG_EVERY_N(2, 1000) << "time elapsed in libevent = " << getTimeDeltaMicro(&start).count();
+       }
+     } else {
+       // auto start = std::chrono::steady_clock::now();
+       res = evb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
+       // VLOG_EVERY_N(2, 1000) << "time elapsed in libevent = " << getTimeDeltaMicro(&start).count();
+       // start = std::chrono::steady_clock::now();
+       int sres = sevb_->eb_event_base_loop_w_return(EVLOOP_ONCE | EVLOOP_NONBLOCK);
+       // VLOG_EVERY_N(2, 1000) << "time elapsed in shenango event loop = " << getTimeDeltaMicro(&start).count();
+       res = res && sres ? 1 : 0;
+     }
 
     ranLoopCallbacks = runLoopCallbacks();
 
