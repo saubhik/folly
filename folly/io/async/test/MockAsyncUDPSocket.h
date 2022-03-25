@@ -30,7 +30,7 @@ struct MockAsyncUDPSocket : public AsyncUDPSocket {
   MOCK_METHOD2(
       bind,
       void(const SocketAddress&, AsyncUDPSocket::BindOptions bindOptions));
-  MOCK_METHOD2(setFD, void(NetworkSocket, AsyncUDPSocket::FDOwnership));
+  MOCK_METHOD2(setFD, void(ShNetworkSocket, AsyncUDPSocket::FDOwnership));
   MOCK_METHOD2(
       write, ssize_t(const SocketAddress&, const std::unique_ptr<IOBuf>&));
   MOCK_METHOD3(
@@ -45,7 +45,7 @@ struct MockAsyncUDPSocket : public AsyncUDPSocket {
   MOCK_METHOD0(pauseRead, void());
   MOCK_METHOD0(close, void());
   MOCK_METHOD0(setDFAndTurnOffPMTU, void());
-  MOCK_CONST_METHOD0(getNetworkSocket, NetworkSocket());
+  MOCK_CONST_METHOD0(getNetworkSocket, ShNetworkSocket());
   MOCK_METHOD1(setReusePort, void(bool));
   MOCK_METHOD1(setReuseAddr, void(bool));
   MOCK_METHOD1(dontFragment, void(bool));

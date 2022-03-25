@@ -18,10 +18,11 @@
 
 #include <algorithm>
 #include <chrono>
-#include <thread>
 
 #include <folly/portability/Asm.h>
 #include <folly/synchronization/WaitOptions.h>
+
+#include "thread.h"
 
 namespace folly {
 namespace detail {
@@ -79,7 +80,7 @@ spin_result spin_yield_until(
       return spin_result::timeout;
     }
 
-    std::this_thread::yield();
+    rt::Yield();
   }
 }
 
