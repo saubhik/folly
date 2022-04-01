@@ -534,7 +534,6 @@ class SocketAddress {
    */
   size_t hash() const;
 
- private:
   /**
    * Unix socket addresses require more storage than IPv4 and IPv6 addresses,
    * and are comparatively little-used.
@@ -570,18 +569,6 @@ class SocketAddress {
     void free() { delete addr; }
   };
 
-  struct addrinfo* getAddrInfo(const char* host, uint16_t port, int flags);
-  struct addrinfo* getAddrInfo(const char* host, const char* port, int flags);
-  void setFromAddrInfo(const struct addrinfo* info);
-  void setFromLocalAddr(const struct addrinfo* info);
-  void setFromSocket(
-      NetworkSocket socket,
-      int (*fn)(NetworkSocket, struct sockaddr*, socklen_t*));
-  std::string getIpString(int flags) const;
-  void getIpString(char* buf, size_t buflen, int flags) const;
-
-  void updateUnixAddressLength(socklen_t addrlen);
-
   /*
    * storage_ contains room for a full IPv4 or IPv6 address, so they can be
    * stored inline without a separate allocation on the heap.
@@ -596,6 +583,19 @@ class SocketAddress {
   } storage_{};
   // IPAddress class does nto save zone or port, and must be saved here
   uint16_t port_;
+
+ private:
+  struct addrinfo* getAddrInfo(const char* host, uint16_t port, int flags);
+  struct addrinfo* getAddrInfo(const char* host, const char* port, int flags);
+  void setFromAddrInfo(const struct addrinfo* info);
+  void setFromLocalAddr(const struct addrinfo* info);
+  void setFromSocket(
+      NetworkSocket socket,
+      int (*fn)(NetworkSocket, struct sockaddr*, socklen_t*));
+  std::string getIpString(int flags) const;
+  void getIpString(char* buf, size_t buflen, int flags) const;
+
+  void updateUnixAddressLength(socklen_t addrlen);
 
   bool external_{false};
 };

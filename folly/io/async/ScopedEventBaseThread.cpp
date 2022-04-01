@@ -23,6 +23,11 @@
 
 using namespace std;
 
+#if PROFILING_ENABLED
+namespace {
+std::unordered_map<std::string, uint64_t> totElapsed;
+}
+#endif
 namespace folly {
 
 static void run(
@@ -30,18 +35,33 @@ static void run(
     EventBase* eb,
     folly::Baton<>* stop,
     const StringPiece& name) {
+  uint64_t st = microtime();
   if (!name.empty()) {
     folly::setThreadName(name);
   }
 
   ebm->setEventBase(eb, false);
+#if PROFILING_ENABLED
+  totElapsed["run-1"] += microtime() - st;
+  VLOG_EVERY_N(1, 100) << "folly::run() PART 1"
+                       << " tot = " << totElapsed["run-1"] << " micros"
+                       << (totElapsed["run-1"] = 0);
+#endif
   eb->loopForever();
-
+#if PROFILING_ENABLED
+  st = microtime();
+#endif
   // must destruct in io thread for on-destruction callbacks
   eb->runOnDestruction([=] { ebm->clearEventBase(); });
   // wait until terminateLoopSoon() is complete
   stop->wait(folly::Baton<>::wait_options().logging_enabled(false));
   eb->~EventBase();
+#if PROFILING_ENABLED
+  totElapsed["run-2"] += microtime() - st;
+  VLOG_EVERY_N(1, 100) << "folly::run() PART 2"
+                       << " tot = " << totElapsed["run-2"] << " micros"
+                       << (totElapsed["run-2"] = 0);
+#endif
 }
 
 ScopedEventBaseThread::ScopedEventBaseThread()

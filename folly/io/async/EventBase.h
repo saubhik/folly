@@ -165,6 +165,7 @@ class EventBase : public TimeoutManager,
     virtual ~LoopCallback() = default;
 
     virtual void runLoopCallback() noexcept = 0;
+    virtual bool isFunctionLooper() noexcept { return false; };
     void cancelLoopCallback() {
       context_.reset();
       unlink();

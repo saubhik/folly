@@ -304,9 +304,7 @@ class AsyncUDPSocket : public ShenangoEventHandler {
   };
 
   virtual ssize_t sendmsg(ShNetworkSocket socket, const struct msghdr* message,
-                          int flags) {
-    return shnetops::sendmsg(socket, message, flags);
-  }
+                          int flags);
 
   virtual int sendmmsg(ShNetworkSocket socket, struct mmsghdr* msgvec,
                        unsigned int vlen, int flags) {
