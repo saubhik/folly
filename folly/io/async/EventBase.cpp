@@ -39,6 +39,9 @@
 #include <folly/system/ThreadName.h>
 
 namespace {
+#if PROFILING_ENABLED
+std::unordered_map<std::string, uint64_t> totElapsed;
+#endif
 constexpr folly::StringPiece executorName = "EventBase";
 
 class ShenangoEventBaseBackend : public folly::ShenangoEventBaseBackendBase {
@@ -379,7 +382,16 @@ void EventBase::waitUntilRunning() {
 
 // enters the event_base loop -- will only exit when forced to
 bool EventBase::loop() {
+#if PROFILING_ENABLED
+  uint64_t st = microtime();
+#endif
   ExecutorBlockingGuard guard{ExecutorBlockingGuard::ForbidTag{}, executorName};
+#if PROFILING_ENABLED
+  totElapsed["loop"] += microtime() - st;
+  VLOG_EVERY_N(1, 100) << "folly::EventBase::loop()"
+                       << " tot = " << totElapsed["loop"] << " micros"
+                       << (totElapsed["loop"] = 0);
+#endif
   return loopBody();
 }
 
@@ -399,6 +411,10 @@ bool EventBase::loopOnce(int flags) {
 }
 
 bool EventBase::loopBody(int flags, bool ignoreKeepAlive) {
+#if PROFILING_ENABLED
+  uint64_t st = microtime();
+  uint64_t st0;
+#endif
   VLOG(5) << "EventBase(): Starting loop.";
 
   const char* message =
@@ -440,8 +456,16 @@ bool EventBase::loopBody(int flags, bool ignoreKeepAlive) {
     prev = std::chrono::steady_clock::now();
     idleStart = prev;
   }
-
+#if PROFILING_ENABLED
+  totElapsed["loopBody-1"] += microtime() - st;
+  VLOG_EVERY_N(1, 100) << "folly::EventBase::loopBody() PART 1"
+                       << " tot = " << totElapsed["loopBody-1"] << " micros"
+                       << (totElapsed["loopBody-1"] = 0);
+#endif
   while (!stop_.load(std::memory_order_relaxed)) {
+#if PROFILING_ENABLED
+    st0 = st = microtime();
+#endif
     if (!ignoreKeepAlive) {
       applyLoopKeepAlive();
     }
@@ -450,28 +474,41 @@ bool EventBase::loopBody(int flags, bool ignoreKeepAlive) {
     // Run the before loop callbacks
     LoopCallbackList callbacks;
     callbacks.swap(runBeforeLoopCallbacks_);
-
+#if PROFILING_ENABLED
+    totElapsed["loopBody-2"] += microtime() - st;
+    VLOG_EVERY_N(1, 10000) << "folly::EventBase::loopBody() PART 2 "
+                            << " tot = " << totElapsed["loopBody-2"]
+                            << " micros"
+                            << (totElapsed["loopBody-2"] = 0);
+#endif
     runLoopCallbacks(callbacks);
+#if PROFILING_ENABLED
+    st = microtime();
+#endif
 
     // nobody can add loop callbacks from within this thread if
     // we don't have to handle anything to start with...
      if (blocking && loopCallbacks_.empty() && sevb_->hasSocket) {
        while (sevb_->eb_event_base_loop_w_return(EVLOOP_ONCE)) {
-         // auto start = std::chrono::steady_clock::now();
          res = evb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
-         // VLOG_EVERY_N(2, 1000) << "time elapsed in libevent = " << getTimeDeltaMicro(&start).count();
        }
      } else {
-       // auto start = std::chrono::steady_clock::now();
        res = evb_->eb_event_base_loop(EVLOOP_ONCE | EVLOOP_NONBLOCK);
-       // VLOG_EVERY_N(2, 1000) << "time elapsed in libevent = " << getTimeDeltaMicro(&start).count();
-       // start = std::chrono::steady_clock::now();
        int sres = sevb_->eb_event_base_loop_w_return(EVLOOP_ONCE | EVLOOP_NONBLOCK);
-       // VLOG_EVERY_N(2, 1000) << "time elapsed in shenango event loop = " << getTimeDeltaMicro(&start).count();
        res = res && sres ? 1 : 0;
      }
-
+#if PROFILING_ENABLED
+    totElapsed["loopBody-3"] += microtime() - st;
+    VLOG_EVERY_N(1, 10000) << "folly::EventBase::loopBody() PART 3 "
+                            << " tot = "
+                            << totElapsed["loopBody-3"]
+                            << " micros"
+                            << (totElapsed["loopBody-3"] = 0);
+#endif
     ranLoopCallbacks = runLoopCallbacks();
+#if PROFILING_ENABLED
+    st = microtime();
+#endif
 
     if (enableTimeMeasurement_) {
       auto now = std::chrono::steady_clock::now();
@@ -537,11 +574,28 @@ bool EventBase::loopBody(int flags, bool ignoreKeepAlive) {
       VLOG(11) << "EventBase " << this
                << " loop time: " << getTimeDelta(&prev).count();
     }
+#if PROFILING_ENABLED
+    totElapsed["loopBody-4"] += microtime() - st;
+    VLOG_EVERY_N(1, 10000) << "folly::EventBase::loopBody() PART 4"
+                            << " tot = "
+                            << totElapsed["loopBody-4"]
+                            << " micros"
+                            << (totElapsed["loopBody-4"] = 0);
+    totElapsed["loopBody"] += microtime() - st0;
+    VLOG_EVERY_N(1, 10000) << "folly::EventBase::loopBody() ONE LOOP"
+                            << " tot = "
+                            << totElapsed["loopBody"]
+                            << " micros"
+                            << (totElapsed["loopBody"] = 0);
+#endif
 
     if (once) {
       break;
     }
   }
+#if PROFILING_ENABLED
+  st = microtime();
+#endif
   // Reset stop_ so loop() can be called again
   stop_.store(false, std::memory_order_relaxed);
 
@@ -556,7 +610,14 @@ bool EventBase::loopBody(int flags, bool ignoreKeepAlive) {
   }
 
   loopThread_.store({}, std::memory_order_release);
-
+#if PROFILING_ENABLED
+  totElapsed["loopBody-5"] += microtime() - st;
+  VLOG_EVERY_N(1, 100) << "folly::EventBase::loopBody() PART 5 "
+                       << " tot = "
+                       << totElapsed["loopBody-5"]
+                       << " micros"
+                       << (totElapsed["loopBody-5"] = 0);
+#endif
   VLOG(5) << "EventBase(): Done with loop.";
   return true;
 }
@@ -596,6 +657,9 @@ void EventBase::applyLoopKeepAlive() {
 }
 
 void EventBase::loopForever() {
+#if PROFILING_ENABLED
+  uint64_t st = microtime();
+#endif
   bool ret;
   {
     SCOPE_EXIT { applyLoopKeepAlive(); };
@@ -604,6 +668,12 @@ void EventBase::loopForever() {
     // released inside a loop.
     ++loopKeepAliveCount_;
     SCOPE_EXIT { --loopKeepAliveCount_; };
+#if PROFILING_ENABLED
+    totElapsed["loopForever"] += microtime() - st;
+    VLOG_EVERY_N(1, 100) << "folly::EventBase::loopForever()"
+                         << " tot = " << totElapsed["loopForever"] << " micros"
+                         << (totElapsed["loopForever"] = 0);
+#endif
     ret = loop();
   }
 
@@ -753,16 +823,43 @@ void EventBase::runImmediatelyOrRunInEventBaseThreadAndWait(Func fn) noexcept {
 }
 
 void EventBase::runLoopCallbacks(LoopCallbackList& currentCallbacks) {
+#if PROFILING_ENABLED
+  uint64_t st = microtime();
+#endif
   while (!currentCallbacks.empty()) {
     LoopCallback* callback = &currentCallbacks.front();
     currentCallbacks.pop_front();
     folly::RequestContextScopeGuard rctx(std::move(callback->context_));
     ExecutionObserverScopeGuard guard(executionObserver_, callback);
+#if PROFILING_ENABLED
+    if (callback->isFunctionLooper()) {
+      totElapsed["runLoopCallbacks-1"] += microtime() - st;
+      VLOG_EVERY_N(1, 10000) << "folly::EventBase::runLoopCallbacks() PART 1"
+                             << " tot = " << totElapsed["runLoopCallbacks-1"]
+                             << " micros"
+                             << (totElapsed["runLoopCallbacks-1"] = 0);
+      callback->runLoopCallback();
+      st = microtime();
+    } else {
+      callback->runLoopCallback();
+    }
+#else
     callback->runLoopCallback();
+#endif
   }
+#if PROFILING_ENABLED
+  totElapsed["runLoopCallbacks-2"] += microtime() - st;
+  VLOG_EVERY_N(1, 1000000) << "folly::EventBase::runLoopCallbacks() PART 2"
+                           << " tot = " << totElapsed["runLoopCallbacks-2"]
+                           << " micros"
+                           << (totElapsed["runLoopCallbacks-2"] = 0);
+#endif
 }
 
 bool EventBase::runLoopCallbacks() {
+#if PROFILING_ENABLED
+  uint64_t st = microtime();
+#endif
   bumpHandlingTime();
   if (!loopCallbacks_.empty()) {
     // Swap the loopCallbacks_ list with a temporary list on our stack.
@@ -776,7 +873,13 @@ bool EventBase::runLoopCallbacks() {
     LoopCallbackList currentCallbacks;
     currentCallbacks.swap(loopCallbacks_);
     runOnceCallbacks_ = &currentCallbacks;
-
+#if PROFILING_ENABLED
+    totElapsed["runLoopCallbacks"] += microtime() - st;
+    VLOG_EVERY_N(1, 1000000) << "folly::EventBase::runLoopCallbacks()"
+                             << " tot = " << totElapsed["runLoopCallbacks"]
+                             << " micros"
+                             << (totElapsed["runLoopCallbacks"] = 0);
+#endif
     runLoopCallbacks(currentCallbacks);
 
     runOnceCallbacks_ = nullptr;

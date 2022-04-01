@@ -99,7 +99,7 @@ ssize_t send(ShNetworkSocket& s, const void* buf, size_t len, int flags) {
 }
 
 ssize_t sendmsg(ShNetworkSocket& socket, const msghdr* message, int flags) {
-  VLOG(4) << "Sending message!";
+  VLOG(4) << "shnetops::sendmsg Sending message!";
   rt::UdpConn* sock = socket.data;
   // sock->SetNonblocking(socket.nonBlocking);
   sock->SetNonblocking(true);
@@ -117,10 +117,12 @@ ssize_t sendmsg(ShNetworkSocket& socket, const msghdr* message, int flags) {
     if (r == -1 || size_t(r) != message->msg_iov[i].iov_len) {
       // Some error happened.
       // TODO: Handle Error?
+      VLOG(4) << "shnetops::sendmsg errorno = " << r;
       return -1;
     }
     bytesSent += r;
   }
+  VLOG(4) << "shnetops::sendmsg bytesSent = " << bytesSent;
   return bytesSent;
 }
 

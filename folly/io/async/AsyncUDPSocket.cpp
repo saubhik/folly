@@ -13,6 +13,11 @@
 #define FOLLY_HAVE_VLA_01 0
 #endif
 
+#if PROFILING_ENABLED
+namespace {
+std::unordered_map<std::string, uint64_t> totElapsed;
+}
+#endif
 namespace folly {
 
 void AsyncUDPSocket::fromMsg(
@@ -219,6 +224,9 @@ ssize_t AsyncUDPSocket::writeGSO(
   // really do not make sense. Optimize for buffer chains with
   // buffers less than 16, which is the highest I can think of
   // for a real use case.
+#if PROFILING_ENABLED
+  uint64_t st = microtime();
+#endif
   iovec vec[16];
   size_t iovec_len = buf->fillIov(vec, sizeof(vec) / sizeof(vec[0])).numIovecs;
   if (UNLIKELY(iovec_len == 0)) {
@@ -227,7 +235,12 @@ ssize_t AsyncUDPSocket::writeGSO(
     vec[0].iov_len = buf->length();
     iovec_len = 1;
   }
-
+#if PROFILING_ENABLED
+  totElapsed["writeGSO"] += microtime() - st;
+  VLOG_EVERY_N(1, 10000) << "folly::AsyncUDPSocket::writeGSO()"
+                          << " tot = " << totElapsed["writeGSO"] << " micros"
+                          << (totElapsed["writeGSO"] = 0);
+#endif
   return writev(address, vec, iovec_len);
 }
 
@@ -259,8 +272,13 @@ AsyncUDPSocket::writeChain(const folly::SocketAddress& address,
 ssize_t AsyncUDPSocket::writev(const folly::SocketAddress& address,
                                const struct iovec* vec,
                                size_t iovec_len) {
+#if PROFILING_ENABLED
+  uint64_t st = microtime();
+#endif
   CHECK_NE(ShNetworkSocket(), fd_) << "Socket not yet bound";
-  netaddr raddr = rt::StringToNetaddr(address.describe());
+  netaddr raddr{};
+  raddr.ip = address.storage_.addr.asV4().toLongHBO();
+  raddr.port = address.port_;
 
   struct msghdr msg{};
   if (!connected_) {
@@ -279,7 +297,12 @@ ssize_t AsyncUDPSocket::writev(const folly::SocketAddress& address,
   msg.msg_control = nullptr;
   msg.msg_controllen = 0;
   msg.msg_flags = 0;
-
+#if PROFILING_ENABLED
+  totElapsed["writev"] += microtime() - st;
+  VLOG_EVERY_N(1, 10000) << "folly::AsyncUDPSocket::writev()"
+                          << " tot = " << totElapsed["writev"] << " micros"
+                          << (totElapsed["writev"] = 0);
+#endif
   return sendmsg(fd_, &msg, 0);
 }
 
@@ -346,6 +369,21 @@ int AsyncUDPSocket::writeImpl(Range<SocketAddress const*> addrs,
     ret = sendmmsg(fd_, msgvec, count, 0);
   }
 
+  return ret;
+}
+
+ssize_t AsyncUDPSocket::sendmsg(ShNetworkSocket socket,
+    const struct msghdr* message, int flags) {
+#if PROFILING_ENABLED
+  uint64_t st = microtime();
+#endif
+  ssize_t ret = shnetops::sendmsg(socket, message, flags);
+#if PROFILING_ENABLED
+  totElapsed["sendmsg"] += microtime() - st;
+  VLOG_EVERY_N(1, 10000) << "folly::AsyncUDPSocket::sendmsg()"
+                         << " tot = " << totElapsed["sendmsg"] << " micros"
+                         << (totElapsed["sendmsg"] = 0);
+#endif
   return ret;
 }
 
