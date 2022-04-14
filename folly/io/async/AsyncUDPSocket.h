@@ -175,7 +175,9 @@ class AsyncUDPSocket : public ShenangoEventHandler {
   virtual ssize_t writeGSO(
       const folly::SocketAddress& address,
       const std::unique_ptr<folly::IOBuf>& buf,
-      int gso);
+      int gso,
+      void *cipherMeta,
+      ssize_t cipherMetaLen);
 
   virtual ssize_t writeChain(const folly::SocketAddress& address,
                              std::unique_ptr<folly::IOBuf>&& buf);
@@ -195,8 +197,12 @@ class AsyncUDPSocket : public ShenangoEventHandler {
       size_t count,
       const int* gso);
 
-  virtual ssize_t writev(const folly::SocketAddress& address,
-                         const struct iovec* vec, size_t iovec_len);
+  virtual ssize_t writev(
+      const folly::SocketAddress& address,
+      const struct iovec* vec,
+      size_t iovec_len,
+      void *cipherMeta,
+      ssize_t cipherMetaLen);
 
   virtual ssize_t recvmsg(struct msghdr* msg, int flags);
 
@@ -303,8 +309,12 @@ class AsyncUDPSocket : public ShenangoEventHandler {
     socklen_t len;
   };
 
-  virtual ssize_t sendmsg(ShNetworkSocket socket, const struct msghdr* message,
-                          int flags);
+  virtual ssize_t sendmsg(
+      ShNetworkSocket socket,
+      const struct msghdr* message,
+      int flags,
+      void *cipherMeta,
+      ssize_t cipherMetaLen);
 
   virtual int sendmmsg(ShNetworkSocket socket, struct mmsghdr* msgvec,
                        unsigned int vlen, int flags) {

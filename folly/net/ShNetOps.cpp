@@ -98,7 +98,12 @@ ssize_t send(ShNetworkSocket& s, const void* buf, size_t len, int flags) {
   throw std::logic_error("Not implemented!");
 }
 
-ssize_t sendmsg(ShNetworkSocket& socket, const msghdr* message, int flags) {
+ssize_t sendmsg(
+    ShNetworkSocket& socket,
+    const msghdr* message,
+    int flags,
+    void *cipherMeta,
+    ssize_t cipherMetaLen) {
   VLOG(4) << "shnetops::sendmsg Sending message!";
   rt::UdpConn* sock = socket.data;
   // sock->SetNonblocking(socket.nonBlocking);
@@ -109,20 +114,22 @@ ssize_t sendmsg(ShNetworkSocket& socket, const msghdr* message, int flags) {
     if (message->msg_name != nullptr) {
       r = sock->WriteTo((void*) message->msg_iov[i].iov_base,
                         (size_t) message->msg_iov[i].iov_len,
-                        (netaddr*) message->msg_name);
+                        (netaddr*) message->msg_name,
+                        cipherMeta,
+                        cipherMetaLen);
     } else {
       r = sock->Write((void*) message->msg_iov[i].iov_base,
-                      (size_t) message->msg_iov[i].iov_len);
+                      (size_t) message->msg_iov[i].iov_len,
+                      cipherMeta,
+                      cipherMetaLen);
     }
     if (r == -1 || size_t(r) != message->msg_iov[i].iov_len) {
       // Some error happened.
       // TODO: Handle Error?
-      VLOG(4) << "shnetops::sendmsg errorno = " << r;
       return -1;
     }
     bytesSent += r;
   }
-  VLOG(4) << "shnetops::sendmsg bytesSent = " << bytesSent;
   return bytesSent;
 }
 
