@@ -18,12 +18,8 @@ int recvmmsg(ShNetworkSocket &s, mmsghdr *msgvec, unsigned int vlen,
 ssize_t send(ShNetworkSocket &s, const void *buf, size_t len, int flags);
 ssize_t sendto(ShNetworkSocket &s, const void *buf, size_t len, int flags,
                const sockaddr *to, socklen_t tolen);
-ssize_t sendmsg(
-    ShNetworkSocket &socket,
-    const msghdr *message,
-    int flags,
-    void *cipherMeta,
-    ssize_t cipherMetaLen);
+ssize_t sendmsg(ShNetworkSocket &socket, const msghdr *message, int flags,
+                rt::CipherMeta **cipherMetas, ssize_t numCipherMetas);
 int sendmmsg(ShNetworkSocket &socket, mmsghdr *msgvec, unsigned int vlen,
              int flags);
 ShNetworkSocket socket();

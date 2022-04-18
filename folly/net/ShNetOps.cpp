@@ -98,30 +98,24 @@ ssize_t send(ShNetworkSocket& s, const void* buf, size_t len, int flags) {
   throw std::logic_error("Not implemented!");
 }
 
-ssize_t sendmsg(
-    ShNetworkSocket& socket,
-    const msghdr* message,
-    int flags,
-    void *cipherMeta,
-    ssize_t cipherMetaLen) {
+ssize_t sendmsg(ShNetworkSocket &socket, const msghdr *message, int flags,
+                rt::CipherMeta **cipherMetas, ssize_t numCipherMetas) {
   VLOG(4) << "shnetops::sendmsg Sending message!";
-  rt::UdpConn* sock = socket.data;
+  rt::UdpConn *sock = socket.data;
   // sock->SetNonblocking(socket.nonBlocking);
   sock->SetNonblocking(true);
   ssize_t bytesSent = 0;
   for (size_t i = 0; i < message->msg_iovlen; i++) {
     ssize_t r;
     if (message->msg_name != nullptr) {
-      r = sock->WriteTo((void*) message->msg_iov[i].iov_base,
-                        (size_t) message->msg_iov[i].iov_len,
-                        (netaddr*) message->msg_name,
-                        cipherMeta,
-                        cipherMetaLen);
+      r = sock->WriteTo((void *)message->msg_iov[i].iov_base,
+                        (size_t)message->msg_iov[i].iov_len,
+                        (netaddr *)message->msg_name, cipherMetas,
+                        numCipherMetas);
     } else {
-      r = sock->Write((void*) message->msg_iov[i].iov_base,
-                      (size_t) message->msg_iov[i].iov_len,
-                      cipherMeta,
-                      cipherMetaLen);
+      r = sock->Write((void *)message->msg_iov[i].iov_base,
+                      (size_t)message->msg_iov[i].iov_len, cipherMetas,
+                      numCipherMetas);
     }
     if (r == -1 || size_t(r) != message->msg_iov[i].iov_len) {
       // Some error happened.

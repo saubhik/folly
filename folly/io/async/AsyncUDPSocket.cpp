@@ -220,8 +220,8 @@ ssize_t AsyncUDPSocket::writeGSO(
     const folly::SocketAddress& address,
     const std::unique_ptr<folly::IOBuf>& buf,
     int gso,
-    void *cipherMeta,
-    ssize_t cipherMetaLen) {
+    rt::CipherMeta** cipherMetas,
+    ssize_t numCipherMetas) {
   // UDP's typical MTU size is 1500, so high number of buffers
   // really do not make sense. Optimize for buffer chains with
   // buffers less than 16, which is the highest I can think of
@@ -243,7 +243,7 @@ ssize_t AsyncUDPSocket::writeGSO(
                           << " tot = " << totElapsed["writeGSO"] << " micros"
                           << (totElapsed["writeGSO"] = 0);
 #endif
-  return writev(address, vec, iovec_len, cipherMeta, cipherMetaLen);
+  return writev(address, vec, iovec_len, cipherMetas, numCipherMetas);
 }
 
 void AsyncUDPSocket::setFD(ShNetworkSocket fd, FDOwnership ownership) {
@@ -275,8 +275,8 @@ ssize_t AsyncUDPSocket::writev(
     const folly::SocketAddress& address,
     const struct iovec* vec,
     size_t iovec_len,
-    void *cipherMeta,
-    ssize_t cipherMetaLen) {
+    rt::CipherMeta** cipherMetas,
+    ssize_t numCipherMetas) {
 #if PROFILING_ENABLED
   uint64_t st = microtime();
 #endif
@@ -308,7 +308,7 @@ ssize_t AsyncUDPSocket::writev(
                           << " tot = " << totElapsed["writev"] << " micros"
                           << (totElapsed["writev"] = 0);
 #endif
-  return sendmsg(fd_, &msg, 0, cipherMeta, cipherMetaLen);
+  return sendmsg(fd_, &msg, 0, cipherMetas, numCipherMetas);
 }
 
 int AsyncUDPSocket::writemGSO(
@@ -381,17 +381,13 @@ ssize_t AsyncUDPSocket::sendmsg(
     ShNetworkSocket socket,
     const struct msghdr* message,
     int flags,
-    void *cipherMeta,
-    ssize_t cipherMetaLen) {
+    rt::CipherMeta** cipherMetas,
+    ssize_t numCipherMetas) {
 #if PROFILING_ENABLED
   uint64_t st = microtime();
 #endif
-  ssize_t ret = shnetops::sendmsg(
-      socket,
-      message,
-      flags,
-      cipherMeta,
-      cipherMetaLen);
+  ssize_t ret =
+      shnetops::sendmsg(socket, message, flags, cipherMetas, numCipherMetas);
 #if PROFILING_ENABLED
   totElapsed["sendmsg"] += microtime() - st;
   VLOG_EVERY_N(1, 10000) << "folly::AsyncUDPSocket::sendmsg()"
