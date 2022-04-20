@@ -29,7 +29,8 @@ void ShenangoEventBaseEvent::eb_event_add(const struct timeval* timeout) {
 void ShenangoEventBaseEvent::eb_event_del() {
   auto* backend = evb_ ? (evb_->getShenangoBackend()) : nullptr;
   if (backend) {
-    backend->eb_event_del(*this);
+    rt::Event::DelEvent(this->getEvent());
+    // backend->eb_event_del(*this);
   }
 }
 } // namespace folly

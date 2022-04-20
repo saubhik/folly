@@ -219,7 +219,9 @@ void AsyncUDPSocket::setErrMessageCallback(
 ssize_t AsyncUDPSocket::writeGSO(
     const folly::SocketAddress& address,
     const std::unique_ptr<folly::IOBuf>& buf,
-    int gso) {
+    int gso,
+    rt::CipherMeta** cipherMetas,
+    ssize_t numCipherMetas) {
   // UDP's typical MTU size is 1500, so high number of buffers
   // really do not make sense. Optimize for buffer chains with
   // buffers less than 16, which is the highest I can think of
@@ -241,7 +243,7 @@ ssize_t AsyncUDPSocket::writeGSO(
                           << " tot = " << totElapsed["writeGSO"] << " micros"
                           << (totElapsed["writeGSO"] = 0);
 #endif
-  return writev(address, vec, iovec_len);
+  return writev(address, vec, iovec_len, cipherMetas, numCipherMetas);
 }
 
 void AsyncUDPSocket::setFD(ShNetworkSocket fd, FDOwnership ownership) {
@@ -269,9 +271,12 @@ AsyncUDPSocket::writeChain(const folly::SocketAddress& address,
   return ret;
 }
 
-ssize_t AsyncUDPSocket::writev(const folly::SocketAddress& address,
-                               const struct iovec* vec,
-                               size_t iovec_len) {
+ssize_t AsyncUDPSocket::writev(
+    const folly::SocketAddress& address,
+    const struct iovec* vec,
+    size_t iovec_len,
+    rt::CipherMeta** cipherMetas,
+    ssize_t numCipherMetas) {
 #if PROFILING_ENABLED
   uint64_t st = microtime();
 #endif
@@ -303,7 +308,7 @@ ssize_t AsyncUDPSocket::writev(const folly::SocketAddress& address,
                           << " tot = " << totElapsed["writev"] << " micros"
                           << (totElapsed["writev"] = 0);
 #endif
-  return sendmsg(fd_, &msg, 0);
+  return sendmsg(fd_, &msg, 0, cipherMetas, numCipherMetas);
 }
 
 int AsyncUDPSocket::writemGSO(
@@ -372,12 +377,17 @@ int AsyncUDPSocket::writeImpl(Range<SocketAddress const*> addrs,
   return ret;
 }
 
-ssize_t AsyncUDPSocket::sendmsg(ShNetworkSocket socket,
-    const struct msghdr* message, int flags) {
+ssize_t AsyncUDPSocket::sendmsg(
+    ShNetworkSocket socket,
+    const struct msghdr* message,
+    int flags,
+    rt::CipherMeta** cipherMetas,
+    ssize_t numCipherMetas) {
 #if PROFILING_ENABLED
   uint64_t st = microtime();
 #endif
-  ssize_t ret = shnetops::sendmsg(socket, message, flags);
+  ssize_t ret =
+      shnetops::sendmsg(socket, message, flags, cipherMetas, numCipherMetas);
 #if PROFILING_ENABLED
   totElapsed["sendmsg"] += microtime() - st;
   VLOG_EVERY_N(1, 10000) << "folly::AsyncUDPSocket::sendmsg()"
@@ -438,7 +448,7 @@ AsyncUDPSocket::write(const folly::SocketAddress& address,
     iovec_len = 1;
   }
 
-  return writev(address, vec, iovec_len);
+  return writev(address, vec, iovec_len, nullptr, 0);
 }
 
 ssize_t AsyncUDPSocket::recvmsg(struct msghdr* msg, int flags) {
@@ -481,7 +491,6 @@ void AsyncUDPSocket::handlerReady() noexcept {
 }
 
 void AsyncUDPSocket::handleRead() noexcept {
-  VLOG(4) << "handleRead() triggered!";
   void* buf{nullptr};
   size_t len{0};
 
