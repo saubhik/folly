@@ -10,9 +10,9 @@ int bind(ShNetworkSocket &s, const netaddr *name);
 int close(ShNetworkSocket &s);
 int connect(ShNetworkSocket &s, const netaddr *name);
 ssize_t recv(ShNetworkSocket &s, void *buf, size_t len, int flags);
-ssize_t recvfrom(ShNetworkSocket &s, void *buf, size_t len, int flags,
+ssize_t recvfrom(ShNetworkSocket &s, void *buf, size_t len, bool *isDecrypted,
                  netaddr *from);
-ssize_t recvmsg(ShNetworkSocket &s, msghdr *message, int flags);
+ssize_t recvmsg(ShNetworkSocket &s, msghdr *message, bool *isDecrypted);
 int recvmmsg(ShNetworkSocket &s, mmsghdr *msgvec, unsigned int vlen,
              unsigned int flags, timespec *timeout);
 ssize_t send(ShNetworkSocket &s, const void *buf, size_t len, int flags);
