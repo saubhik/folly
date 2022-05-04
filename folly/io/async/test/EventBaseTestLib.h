@@ -20,8 +20,8 @@
 #include <memory>
 #include <thread>
 
-#include "runtime.h"
-#include "thread.h"
+#include <caladan/runtime.h>
+#include <caladan/thread.h>
 
 #include <folly/Memory.h>
 #include <folly/ScopeGuard.h>

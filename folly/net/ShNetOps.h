@@ -3,7 +3,7 @@
 #include <folly/net/ShNetworkSocket.h>
 #include <folly/portability/IOVec.h>
 
-#include "net.h"
+#include <caladan/net.h>
 
 namespace folly::shnetops {
 int bind(ShNetworkSocket &s, const netaddr *name);

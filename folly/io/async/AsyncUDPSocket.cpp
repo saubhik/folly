@@ -1,4 +1,4 @@
-#include "net.h"
+#include <caladan/net.h>
 
 #include <boost/preprocessor/control/if.hpp>
 

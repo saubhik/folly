@@ -16,7 +16,7 @@
 
 #include <glog/logging.h>
 
-#include "runtime.h"
+#include <caladan/runtime.h>
 
 #include <folly/Portability.h>
 #include <folly/init/Init.h>

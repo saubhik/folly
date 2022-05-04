@@ -2,7 +2,7 @@ extern "C" {
 #include <base/log.h>
 }
 
-#include "runtime.h"
+#include <caladan/runtime.h>
 
 #include <folly/Conv.h>
 #include <folly/SocketAddress.h>

@@ -18,7 +18,7 @@
 
 #include <memory>
 
-#include "net.h"
+#include <caladan/net.h>
 
 #include <folly/io/async/EventUtil.h>
 #include <folly/net/NetOps.h>

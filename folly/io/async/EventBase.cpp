@@ -25,7 +25,7 @@
 #include <iostream>
 #include <memory>
 
-#include "sync.h"
+#include <caladan/sync.h>
 
 #include <folly/ExceptionString.h>
 #include <folly/Memory.h>

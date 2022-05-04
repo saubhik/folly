@@ -33,8 +33,8 @@
 #include <boost/intrusive/list.hpp>
 #include <glog/logging.h>
 
-#include "thread.h"
-#include "sh_event.h"
+#include <caladan/thread.h>
+#include <caladan/sh_event.h>
 
 #include <folly/Executor.h>
 #include <folly/Function.h>

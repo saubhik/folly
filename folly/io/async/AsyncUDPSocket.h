@@ -1,6 +1,6 @@
 #pragma once
 
-#include "net.h"
+#include <caladan/net.h>
 
 #include <folly/Function.h>
 #include <folly/SocketAddress.h>
