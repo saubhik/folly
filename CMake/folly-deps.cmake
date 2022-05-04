@@ -145,19 +145,6 @@ find_package(Libsodium)
 list(APPEND FOLLY_LINK_LIBRARIES ${LIBSODIUM_LIBRARIES})
 list(APPEND FOLLY_INCLUDE_DIRECTORIES ${LIBSODIUM_INCLUDE_DIRS})
 
-# add shenango headers
-list(APPEND FOLLY_INCLUDE_DIRECTORIES "/proj/quic-server-PG0/users/saubhik/caladan/inc")
-list(APPEND FOLLY_INCLUDE_DIRECTORIES "/proj/quic-server-PG0/users/saubhik/caladan/bindings/cc")
-
-# link shenango libraries
-list(APPEND FOLLY_LINK_LIBRARIES /proj/quic-server-PG0/users/saubhik/caladan/bindings/cc/librt++.a)
-list(APPEND FOLLY_LINK_LIBRARIES /proj/quic-server-PG0/users/saubhik/caladan/libruntime.a)
-list(APPEND FOLLY_LINK_LIBRARIES /proj/quic-server-PG0/users/saubhik/caladan/libnet.a)
-list(APPEND FOLLY_LINK_LIBRARIES /proj/quic-server-PG0/users/saubhik/caladan/libbase.a)
-
-# need to set the linker script
-set(CMAKE_EXE_LINKER_FLAGS "-T /proj/quic-server-PG0/users/saubhik/caladan/base/base.ld")
-
 # message(STATUS "FOLLY_LINK_LIBRARIES: ${FOLLY_LINK_LIBRARIES}")
 # message(STATUS "FOLLY_INCLUDE_DIRECTORIES: ${FOLLY_INCLUDE_DIRECTORIES}")
 
