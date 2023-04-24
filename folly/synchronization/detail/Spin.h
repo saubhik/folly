@@ -22,7 +22,7 @@
 #include <folly/portability/Asm.h>
 #include <folly/synchronization/WaitOptions.h>
 
-#include "thread.h"
+#include <caladan/thread.h>
 
 namespace folly {
 namespace detail {

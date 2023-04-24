@@ -4,7 +4,7 @@ extern "C" {
 #include "runtime/poll.h"
 }
 
-#include "net.h"
+#include <caladan/net.h>
 
 #include <cassert>
 

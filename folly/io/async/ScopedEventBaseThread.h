@@ -18,7 +18,7 @@
 
 #include <memory>
 
-#include "thread.h"
+#include <caladan/thread.h>
 
 #include <folly/io/async/EventBase.h>
 #include <folly/synchronization/Baton.h>

@@ -2,7 +2,7 @@
 
 #include <ostream>
 
-#include "net.h"
+#include <caladan/net.h>
 
 namespace folly {
 /**

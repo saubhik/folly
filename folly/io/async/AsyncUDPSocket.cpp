@@ -1,4 +1,4 @@
-#include "net.h"
+#include <caladan/net.h>
 
 #include <boost/preprocessor/control/if.hpp>
 
@@ -451,8 +451,8 @@ AsyncUDPSocket::write(const folly::SocketAddress& address,
   return writev(address, vec, iovec_len, nullptr, 0);
 }
 
-ssize_t AsyncUDPSocket::recvmsg(struct msghdr* msg, int flags) {
-  return shnetops::recvmsg(fd_, msg, flags);
+ssize_t AsyncUDPSocket::recvmsg(struct msghdr* msg, bool* isDecrypted) {
+  return shnetops::recvmsg(fd_, msg, isDecrypted);
 }
 
 int AsyncUDPSocket::recvmmsg(struct mmsghdr* msgvec, unsigned int vlen,
@@ -525,7 +525,7 @@ void AsyncUDPSocket::handleRead() noexcept {
     ssize_t bytesRead;
     ReadCallback::OnDataAvailableParams params;
 
-    bytesRead = shnetops::recvfrom(fd_, buf, len, MSG_TRUNC, &addr);
+    bytesRead = shnetops::recvfrom(fd_, buf, len, &(params.isDecrypted), &addr);
 
     if (bytesRead >= 0) {
       clientAddress_ =

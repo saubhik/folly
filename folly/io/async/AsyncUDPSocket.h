@@ -1,6 +1,6 @@
 #pragma once
 
-#include "net.h"
+#include <caladan/net.h>
 
 #include <folly/Function.h>
 #include <folly/SocketAddress.h>
@@ -23,6 +23,7 @@ class AsyncUDPSocket : public ShenangoEventHandler {
   class ReadCallback {
    public:
     struct OnDataAvailableParams {
+      bool isDecrypted = false;
       int gro = -1;
       // RX timestamp if available
       using Timestamp = std::array<struct timespec, 3>;
@@ -204,7 +205,7 @@ class AsyncUDPSocket : public ShenangoEventHandler {
       rt::CipherMeta** cipherMetas,
       ssize_t numCipherMetas);
 
-  virtual ssize_t recvmsg(struct msghdr* msg, int flags);
+  virtual ssize_t recvmsg(struct msghdr* msg, bool* isDecrypted);
 
   virtual int recvmmsg(struct mmsghdr* msgvec, unsigned int vlen,
                        unsigned int flags, struct timespec* timeout);

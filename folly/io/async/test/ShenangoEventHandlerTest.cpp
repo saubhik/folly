@@ -2,8 +2,8 @@ extern "C" {
 #include <base/log.h>
 }
 
-#include "net.h"
-#include "runtime.h"
+#include <caladan/net.h>
+#include <caladan/runtime.h>
 #include "timer.h"
 
 #include <iostream>

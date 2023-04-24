@@ -18,7 +18,7 @@
 
 #include <string>
 
-#include "thread.h"
+#include <caladan/thread.h>
 
 #include <folly/Optional.h>
 #include <folly/Range.h>
